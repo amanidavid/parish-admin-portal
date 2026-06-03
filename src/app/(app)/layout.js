@@ -1,55 +1,72 @@
 'use client';
-import { useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import Sidebar from '@/components/layout/Sidebar';
 import TopBar from '@/components/layout/TopBar';
-import PageProgress from '@/components/ui/PageProgress';
-import useUiStore from '@/store/uiStore';
-import useAuthStore from '@/store/authStore';
-import apiFetch from '@/lib/apiFetch';
+import useAdminAuthStore from '@/store/adminAuthStore';
+import { ADMIN_ME_ROUTE } from '@/constants/api';
 
-export default function AppLayout({ children }) {
-  const sidebarOpen = useUiStore((s) => s.sidebarOpen);
-  const toggleSidebar = useUiStore((s) => s.toggleSidebar);
-  const setPermissions = useAuthStore((s) => s.setPermissions);
-  const setRoles = useAuthStore((s) => s.setRoles);
-  const setAuth = useAuthStore((s) => s.setAuth);
+const SESSION_CHECK_INTERVAL = 5 * 60 * 1000;
+
+function useSessionGuard() {
+  const router = useRouter();
+  const clearAuth = useAdminAuthStore((s) => s.clearAuth);
+  const setAuth = useAdminAuthStore((s) => s.setAuth);
+  const intervalRef = useRef(null);
+
+  const expireSession = useCallback(() => {
+    clearAuth();
+    router.replace('/login?reason=session_expired');
+  }, [clearAuth, router]);
+
+  const checkSession = useCallback(async () => {
+    try {
+      const res = await fetch(ADMIN_ME_ROUTE, { cache: 'no-store' });
+      if (res.status === 401) {
+        expireSession();
+        return;
+      }
+      if (res.ok) {
+        const data = await res.json().catch(() => null);
+        if (data?.data?.user) {
+          setAuth(data.data.user, data.data.admin ?? null);
+        }
+      }
+    } catch {
+      /* network error — don't logout, user might be temporarily offline */
+    }
+  }, [expireSession, setAuth]);
 
   useEffect(() => {
-    if (window.innerWidth < 768) {
-      if (useUiStore.getState().sidebarOpen) toggleSidebar();
-    }
-    const onResize = () => {
-      if (window.innerWidth < 768 && useUiStore.getState().sidebarOpen) {
-        toggleSidebar();
+    checkSession();
+
+    intervalRef.current = setInterval(checkSession, SESSION_CHECK_INTERVAL);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        checkSession();
       }
     };
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
-  /* Fetch user permissions on mount */
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch('/api/v1/app/auth/me')
-      .then((data) => {
-        if (cancelled) return;
-        if (data?.success && data.data?.tenant_user) {
-          const tu = data.data.tenant_user;
-          setPermissions(tu.permissions || []);
-          setRoles((tu.roles || []).map((r) => (typeof r === 'string' ? r : r.name)));
-          /* Also update user object so avatar/name stay in sync */
-          if (tu) {
-            setAuth(tu, useAuthStore.getState().token, useAuthStore.getState().tenantUuid);
-          }
-        }
-      })
-      .catch(() => { });
-    return () => { cancelled = true; };
-  }, [setPermissions, setRoles, setAuth]);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      clearInterval(intervalRef.current);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [checkSession]);
+}
+
+export default function AppLayout({ children }) {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const user = useAdminAuthStore((s) => s.user);
+
+  useSessionGuard();
+
+  const toggleSidebar = () => setSidebarOpen((v) => !v);
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#f8fafc' }}>
-      {/* Mobile backdrop — closes sidebar on tap */}
+    <div className="flex h-screen overflow-hidden" style={{ backgroundColor: '#f1f5f9' }}>
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-30 bg-black/40 md:hidden"
@@ -58,17 +75,14 @@ export default function AppLayout({ children }) {
         />
       )}
 
-      {/* Sidebar — overlay on mobile, in-flow on desktop */}
-      <Sidebar open={sidebarOpen} />
+      <Sidebar open={sidebarOpen} user={user} />
 
-      {/* Global page-transition loader */}
-      <PageProgress />
-
-      {/* Main column */}
-      <div className="flex flex-col flex-1 min-w-0 min-h-0 overflow-hidden">
-        <TopBar />
-        <main className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
-          {children}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        <TopBar sidebarOpen={sidebarOpen} toggleSidebar={toggleSidebar} />
+        <main className="flex-1 overflow-y-auto">
+          <div className="p-6">
+            {children}
+          </div>
         </main>
       </div>
     </div>

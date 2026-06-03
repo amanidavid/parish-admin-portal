@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
+import { ADMIN_TOKEN_KEY } from '@/constants/cookies';
 
-const PUBLIC_PATHS = ['/login', '/register', '/verify-otp', '/forgot-password', '/reset-password'];
+const PUBLIC_PATHS = ['/login'];
 
 export function middleware(request) {
   const { pathname } = request.nextUrl;
-  const token = request.cookies.get('app_token')?.value;
+  const token = request.cookies.get(ADMIN_TOKEN_KEY)?.value;
 
-  const isPublic = PUBLIC_PATHS.some((p) => pathname.startsWith(p));
+  const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(p + '/'));
   const isApiRoute = pathname.startsWith('/api/');
 
   if (isApiRoute) return NextResponse.next();

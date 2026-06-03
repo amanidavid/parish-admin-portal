@@ -1,6 +1,7 @@
 import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
-import { LARAVEL_API_V1_BASE } from '@/lib/laravelApi';
+import { ADMIN_TOKEN_KEY } from '@/constants/cookies';
+import { LARAVEL_ADMIN_API_V1_BASE } from '@/lib/laravelApi';
 
 async function handler(request, context) {
   const params = await context.params;
@@ -9,17 +10,15 @@ async function handler(request, context) {
   const qs = searchParams.toString();
 
   const jar = await cookies();
-  const token = jar.get('app_token')?.value;
-  const tenantUuid = jar.get('tenant_uuid')?.value;
+  const token = jar.get(ADMIN_TOKEN_KEY)?.value;
 
   const headers = {
     'Content-Type': 'application/json',
     'Accept': 'application/json',
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...(tenantUuid ? { 'X-Tenant-Id': tenantUuid } : {}),
   };
 
-  const upstreamUrl = `${LARAVEL_API_V1_BASE}/${path}${qs ? '?' + qs : ''}`;
+  const upstreamUrl = `${LARAVEL_ADMIN_API_V1_BASE}/${path}${qs ? '?' + qs : ''}`;
 
   let body = undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
@@ -40,11 +39,11 @@ async function handler(request, context) {
   } catch {
     data = { success: false, message: `Upstream error ${upstream.status}` };
   }
+
   const response = NextResponse.json(data, { status: upstream.status });
 
   if (upstream.status === 401) {
-    response.cookies.delete('app_token');
-    response.cookies.delete('tenant_uuid');
+    response.cookies.delete(ADMIN_TOKEN_KEY);
   }
 
   return response;

@@ -1,9 +1,8 @@
 'use client';
 import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
-import Link from 'next/link';
-import CountryCodePicker from '@/components/ui/CountryCodePicker';
-import { DEFAULT_COUNTRY } from '@/constants/countryCodes';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useAdminAuthStore from '@/store/adminAuthStore';
+import { ADMIN_LOGIN_ROUTE } from '@/constants/api';
 
 function Spinner() {
   return (
@@ -14,10 +13,14 @@ function Spinner() {
   );
 }
 
-export default function LoginPage() {
+export default function AdminLoginPage() {
   const router = useRouter();
-  const [form, setForm] = useState({ phone: '', password: '' });
-  const [country, setCountry] = useState(DEFAULT_COUNTRY);
+  const searchParams = useSearchParams();
+  const setAuth = useAdminAuthStore((s) => s.setAuth);
+
+  const sessionExpired = searchParams.get('reason') === 'session_expired';
+
+  const [form, setForm] = useState({ credential: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
@@ -29,36 +32,35 @@ export default function LoginPage() {
     setError(null);
   }, []);
 
-  const handleCountryChange = useCallback((c) => {
-    setCountry(c);
-    setFieldErrors((prev) => ({ ...prev, phone: null }));
-  }, []);
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
     setFieldErrors({});
+
+    const trimmed = form.credential.trim();
+    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+    const payload = isEmail
+      ? { email: trimmed, password: form.password }
+      : { username: trimmed, password: form.password };
+
     try {
-      const res = await fetch('/api/auth/login', {
+      const res = await fetch(ADMIN_LOGIN_ROUTE, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone: form.phone, country_code: country.dialCode, password: form.password }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
       if (!res.ok) {
         if (data?.errors) setFieldErrors(data.errors);
-        setError(data?.message);
+        setError(data?.message || 'Login failed. Check your credentials.');
         return;
       }
-      const challengeId = data?.data?.challenge_id;
-      if (challengeId) {
-        router.push(`/verify-otp?cid=${challengeId}`);
-      } else {
-        setError(data?.message);
-      }
+      setAuth(data.data?.user, data.data?.admin);
+      const redirect = searchParams.get('redirect') || '/dashboard';
+      router.replace(redirect);
     } catch {
-      setError('Network error');
+      setError('Network error. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -67,11 +69,24 @@ export default function LoginPage() {
   return (
     <div>
       <div className="mb-8">
-        <h2 className="text-3xl font-bold text-gray-900">Welcome back</h2>
-        <p className="text-gray-500 mt-2">Sign in to your workspace</p>
+        <div className="inline-flex items-center gap-2 bg-primary-50 border border-primary-200 rounded-full px-3 py-1 mb-4">
+          <span className="w-2 h-2 rounded-full bg-primary-500"></span>
+          <span className="text-primary-700 text-xs font-semibold tracking-wide">ADMIN ACCESS</span>
+        </div>
+        <h2 className="text-3xl font-bold text-gray-900">Sign in to Admin</h2>
+        <p className="text-gray-500 mt-1 text-sm">Enter your administrator credentials to continue</p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
+        {sessionExpired && (
+          <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
+            <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+            </svg>
+            <p className="text-sm text-amber-700 font-medium">Your session has expired. Please sign in again.</p>
+          </div>
+        )}
+
         {error && (
           <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
             <svg className="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -81,36 +96,52 @@ export default function LoginPage() {
           </div>
         )}
 
+        {fieldErrors?.auth && (
+          <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+            <p className="text-sm text-red-700">{fieldErrors.auth[0]}</p>
+          </div>
+        )}
+
         <div>
-          <label className="label" htmlFor="phone">Phone Number</label>
-          <div className="flex">
-            <CountryCodePicker value={country.iso2} onChange={handleCountryChange} disabled={loading} />
+          <label className="label" htmlFor="credential">Username or Email</label>
+          <div className="relative">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+            </span>
             <input
-              id="phone" name="phone" type="tel"
-              className="input rounded-l-none border-l-0 flex-1"
-              placeholder="712 345 678"
-              value={form.phone}
+              id="credential" name="credential" type="text"
+              className="input pl-10"
+              placeholder="admin_user or admin@example.com"
+              value={form.credential}
               onChange={handleChange}
+              autoComplete="username"
               required
             />
           </div>
-          {fieldErrors?.phone && <p className="mt-1 text-xs text-red-600">{fieldErrors.phone[0]}</p>}
+          {fieldErrors?.username && <p className="mt-1 text-xs text-red-600">{fieldErrors.username[0]}</p>}
+          {fieldErrors?.email && <p className="mt-1 text-xs text-red-600">{fieldErrors.email[0]}</p>}
         </div>
 
         <div>
-          <div className="flex items-center justify-between mb-1">
-            <label className="label mb-0" htmlFor="password">Password</label>
-            <Link href="/forgot-password" className="text-xs text-blue-600 hover:underline">Forgot password?</Link>
-          </div>
+          <label className="label" htmlFor="password">Password</label>
           <div className="relative">
             <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </span>
-            <input id="password" name="password" type={showPassword ? 'text' : 'password'}
-              className="input pl-10 pr-10" placeholder="••••••••"
-              value={form.password} onChange={handleChange} required minLength={6} />
+            <input
+              id="password" name="password"
+              type={showPassword ? 'text' : 'password'}
+              className="input pl-10 pr-10"
+              placeholder="••••••••"
+              value={form.password}
+              onChange={handleChange}
+              autoComplete="current-password"
+              required
+            />
             <button type="button" onClick={() => setShowPassword((v) => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600">
               {showPassword
@@ -122,18 +153,19 @@ export default function LoginPage() {
           {fieldErrors?.password && <p className="mt-1 text-xs text-red-600">{fieldErrors.password[0]}</p>}
         </div>
 
-        <button type="submit"
-          className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 text-sm font-semibold text-white transition-all"
-          style={{ background: loading ? '#93c5fd' : 'linear-gradient(135deg, #2563eb, #1d4ed8)' }}
-          disabled={loading}>
-          {loading ? <><Spinner /> Signing in...</> : 'Sign in'}
+        <button
+          type="submit"
+          className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 text-sm font-semibold text-white transition-all mt-2"
+          style={{ background: loading ? '#fb923c' : 'linear-gradient(135deg, #ea580c, #c2410c)' }}
+          disabled={loading}
+        >
+          {loading ? <><Spinner /> Authenticating...</> : 'Sign in to Admin Portal'}
         </button>
-
-        <p className="text-center text-sm text-gray-500">
-          Don&apos;t have an account?{' '}
-          <Link href="/register" className="text-blue-600 font-semibold hover:underline">Create account</Link>
-        </p>
       </form>
+
+      <p className="mt-8 text-center text-xs text-gray-400">
+        Restricted access — authorised administrators only
+      </p>
     </div>
   );
 }

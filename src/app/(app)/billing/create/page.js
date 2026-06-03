@@ -1,0 +1,140 @@
+'use client';
+import { useState, useCallback } from 'react';
+import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import BillingService from '@/services/BillingService';
+import { BILLING_CURRENCIES, BILLING_INTERVALS } from '@/constants/status';
+
+function Field({ label, name, children, hint, errors }) {
+  return (
+    <div>
+      <label className="label">{label}</label>
+      {children}
+      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {errors[name]?.map((e, i) => (
+        <p key={i} className="text-xs text-red-500 mt-1">{e}</p>
+      ))}
+    </div>
+  );
+}
+
+export default function CreateBillingProfilePage() {
+  const router = useRouter();
+  const [saving, setSaving] = useState(false);
+  const [errors, setErrors] = useState({});
+  const [form, setForm] = useState({
+    name: '',
+    description: '',
+    billing_interval: 'monthly',
+    trial_days: 14,
+    grace_days: 7,
+    currency: 'TZS',
+    is_default: false,
+    status: 'active',
+  });
+
+  const update = useCallback((field, value) => {
+    setForm((prev) => ({ ...prev, [field]: value }));
+    setErrors((prev) => { const n = { ...prev }; delete n[field]; return n; });
+  }, []);
+
+  const handleSubmit = useCallback(async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setErrors({});
+    const res = await BillingService.store(form);
+    setSaving(false);
+    if (res?.success && res?.data?.uuid) {
+      router.push(`/billing/${res.data.uuid}`);
+    } else if (res?.errors) {
+      setErrors(res.errors);
+    } else if (res?.message) {
+      setErrors({ general: [res.message] });
+    }
+  }, [form, router]);
+
+  return (
+    <div className="space-y-6">
+      <Link href="/billing" className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors">
+        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+        </svg>
+        Back to Billing Profiles
+      </Link>
+
+      <div className="card p-6">
+        <h1 className="text-xl font-bold text-gray-900 mb-1">Create Billing Profile</h1>
+        <p className="text-sm text-gray-400 mb-6">Set up a reusable pricing plan that can be assigned to workspaces.</p>
+
+        <form onSubmit={handleSubmit} className="space-y-5">
+          {errors.general?.map((e, i) => (
+            <div key={i} className="rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">{e}</div>
+          ))}
+
+          <Field errors={errors} label="Profile Name" name="name" hint="e.g. Standard Monthly, Enterprise Annual">
+            <input type="text" value={form.name} onChange={(e) => update('name', e.target.value)}
+              className="input" placeholder="Enter profile name" />
+          </Field>
+
+          <Field errors={errors} label="Description" name="description">
+            <textarea value={form.description} onChange={(e) => update('description', e.target.value)}
+              className="input min-h-[80px] resize-y" placeholder="Brief description of this pricing plan" />
+          </Field>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field errors={errors} label="Billing Interval" name="billing_interval">
+              <select value={form.billing_interval} onChange={(e) => update('billing_interval', e.target.value)} className="input">
+                {BILLING_INTERVALS.map((i) => <option key={i.value} value={i.value}>{i.label}</option>)}
+              </select>
+            </Field>
+
+            <Field errors={errors} label="Currency" name="currency">
+              <select value={form.currency} onChange={(e) => update('currency', e.target.value)} className="input">
+                {BILLING_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <Field errors={errors} label="Trial Days" name="trial_days" hint="Free trial period">
+              <input type="number" min={0} max={365} value={form.trial_days}
+                onChange={(e) => update('trial_days', parseInt(e.target.value, 10) || 0)} className="input" />
+            </Field>
+
+            <Field errors={errors} label="Grace Days" name="grace_days" hint="Days after expiry before suspension">
+              <input type="number" min={0} max={365} value={form.grace_days}
+                onChange={(e) => update('grace_days', parseInt(e.target.value, 10) || 0)} className="input" />
+            </Field>
+          </div>
+
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.is_default}
+                onChange={(e) => update('is_default', e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span className="text-sm text-gray-700 font-medium">Set as default</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.status === 'active'}
+                onChange={(e) => update('status', e.target.checked ? 'active' : 'inactive')}
+                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
+              <span className="text-sm text-gray-700 font-medium">Active</span>
+            </label>
+          </div>
+
+          <div className="pt-2 flex items-center gap-3">
+            <button type="submit" disabled={saving}
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
+              style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}>
+              {saving ? 'Creating…' : 'Create Profile'}
+            </button>
+            <Link href="/billing"
+              className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
+              Cancel
+            </Link>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}

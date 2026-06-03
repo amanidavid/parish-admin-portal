@@ -1,0 +1,174 @@
+/**
+ * WorkspaceService — client-side BFF service for admin workspace (tenant) operations.
+ *
+ * All methods call the Next.js BFF proxy (/api/v1/admin/tenants/*)
+ * which injects the admin_token cookie before forwarding to Laravel.
+ */
+import apiFetch from '@/lib/apiFetch';
+import buildQuery from '@/lib/query';
+import { TENANTS_PATH } from '@/constants/api';
+
+const WorkspaceService = {
+  /**
+   * Paginated workspace list with optional filters.
+   *
+   * @param {{ search?, status?, provisioning_status?, per_page?, page? }} filters
+   */
+  index(filters = {}) {
+    return apiFetch(`${TENANTS_PATH}${buildQuery(filters)}`);
+  },
+
+  /**
+   * Single workspace record.
+   *
+   * @param {string} uuid
+   */
+  show(uuid) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}`);
+  },
+
+  /**
+   * Core operational counts + subscription state for the workspace detail page.
+   *
+   * @param {string} uuid
+   */
+  operationalSummary(uuid) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/operational-summary`);
+  },
+
+  /**
+   * Contract totals and status breakdown.
+   *
+   * @param {string} uuid
+   * @param {{ currency? }} filters
+   */
+  contractsSummary(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/contracts/summary${buildQuery(filters)}`);
+  },
+
+  /**
+   * Property geographic coverage totals.
+   *
+   * @param {string} uuid
+   * @param {{ group_by? }} filters
+   */
+  propertyLocationSummary(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/properties/location-summary${buildQuery(filters)}`);
+  },
+
+  /**
+   * Paginated drill-down of one location level.
+   *
+   * @param {string} uuid
+   * @param {{ group_by?, country?, region?, per_page?, page? }} filters
+   */
+  propertyLocationBreakdown(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/properties/location-breakdown${buildQuery(filters)}`);
+  },
+
+  /**
+   * Paginated property overview with unit rollups.
+   *
+   * @param {string} uuid
+   * @param {{ search?, status?, sort?, per_page?, page? }} filters
+   */
+  properties(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/properties${buildQuery(filters)}`);
+  },
+
+  /**
+   * Paginated workspace staff list.
+   *
+   * @param {string} uuid
+   * @param {{ search?, status?, role?, per_page?, page? }} filters
+   */
+  staff(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/staff${buildQuery(filters)}`);
+  },
+
+  /**
+   * Workspace subscription summary with usage and access state.
+   *
+   * @param {string} uuid
+   */
+  subscription(uuid) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/subscription`);
+  },
+
+  /**
+   * Paginated per-property billing estimate breakdown.
+   *
+   * @param {string} uuid
+   * @param {{ search?, status?, sort?, per_page?, page? }} filters
+   */
+  subscriptionProperties(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/subscription/properties${buildQuery(filters)}`);
+  },
+
+  /**
+   * Suspend or reactivate a workspace.
+   *
+   * @param {string} uuid
+   * @param {{ status: 'active'|'suspended' }} data
+   */
+  updateStatus(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Change the lifecycle status of the current subscription.
+   *
+   * @param {string} uuid
+   * @param {{ status: 'active'|'trialing'|'past_due'|'canceled', effective_at? }} data
+   */
+  updateSubscriptionStatus(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/subscription-status`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Queue a provisioning retry for a failed workspace.
+   *
+   * @param {string} uuid
+   */
+  retryProvisioning(uuid) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/retry-provisioning`, { method: 'POST' });
+  },
+
+  /**
+   * Preview the pricing impact of a billing profile change.
+   *
+   * @param {string} uuid
+   * @param {{ billing_profile_uuid: string, change_timing?: string, effective_at?: string }} data
+   */
+  previewBillingProfileChange(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-profile/preview`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Apply a billing profile change immediately or next cycle.
+   *
+   * @param {string} uuid
+   * @param {{ billing_profile_uuid: string, change_timing?: string, effective_at?: string }} data
+   */
+  assignBillingProfile(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-profile`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  },
+};
+
+export default WorkspaceService;
