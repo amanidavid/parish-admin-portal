@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import WorkspaceService from '@/services/WorkspaceService';
 import { Skel, Badge, StatCard } from '@/components/ui';
+import { fmtDate } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP } from '@/constants/status';
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -174,6 +175,7 @@ export default function WorkspacesPage() {
               <th>Database</th>
               <th>Status</th>
               <th>Provisioning</th>
+              <th>Created</th>
               <th className="text-right">Actions</th>
             </tr>
           </thead>
@@ -189,12 +191,13 @@ export default function WorkspacesPage() {
                 <td><Skel w="w-28" h="h-3" /></td>
                 <td><Skel w="w-14" h="h-5" /></td>
                 <td><Skel w="w-20" h="h-5" /></td>
+                <td><Skel w="w-20" h="h-3" /></td>
                 <td className="text-right"><Skel w="w-12" h="h-7" /></td>
               </tr>
             ))}
             {!loading && workspaces.length === 0 && (
               <tr>
-                <td colSpan={5} className="text-center py-14 text-gray-400 text-sm">
+                <td colSpan={6} className="text-center py-14 text-gray-400 text-sm">
                   No workspaces found
                 </td>
               </tr>
@@ -216,6 +219,7 @@ export default function WorkspacesPage() {
                 <td className="text-xs text-gray-500 font-mono">{t.database || '—'}</td>
                 <td><Badge map={WORKSPACE_STATUS_MAP} value={t.status} /></td>
                 <td><Badge map={PROV_MAP} value={t.provisioning_status} /></td>
+                <td className="text-xs text-gray-500">{fmtDate(t.created_at ?? t.createdAt)}</td>
                 <td className="text-right">
                   <Link href={`/workspaces/${t.uuid}`}
                     className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors">

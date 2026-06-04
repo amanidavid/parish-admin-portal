@@ -3,6 +3,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import BillingService from '@/services/BillingService';
+import useUiStore from '@/store/uiStore';
 import { BILLING_CURRENCIES, BILLING_INTERVALS } from '@/constants/status';
 
 function Field({ label, name, children, hint, errors }) {
@@ -55,11 +56,23 @@ export default function EditBillingProfilePage() {
     e.preventDefault();
     setSaving(true);
     setErrors({});
-    const res = await BillingService.update(uuid, form);
-    setSaving(false);
-    if (res?.success) { router.push(`/billing/${uuid}`); }
-    else if (res?.errors) { setErrors(res.errors); }
-    else if (res?.message) { setErrors({ general: [res.message] }); }
+    try {
+      const res = await BillingService.update(uuid, form);
+      if (res?.success) {
+        useUiStore.getState().showNotification('Billing profile updated');
+        router.push(`/billing/${uuid}`);
+      } else if (res?.errors) {
+        setErrors(res.errors);
+        useUiStore.getState().showNotification('Please fix the errors below', 'error');
+      } else if (res?.message) {
+        setErrors({ general: [res.message] });
+        useUiStore.getState().showNotification(res.message, 'error');
+      }
+    } catch {
+      useUiStore.getState().showNotification('Network error. Please try again.', 'error');
+    } finally {
+      setSaving(false);
+    }
   }, [form, uuid, router]);
 
   if (loading) {

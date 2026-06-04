@@ -50,6 +50,20 @@ export const ACCESS_CFG = Object.freeze({
   suspended: { bg: '#fef2f2', border: '#fecaca', text: '#dc2626', dot: '#dc2626', label: 'Suspended' },
 });
 
+// ─── Usage Adjustments ──────────────────────────────────────────────────────
+export const ADJUSTMENT_STATUS_MAP = Object.freeze({
+  pending: { label: 'Pending', cls: 'badge-amber' },
+  applied: { label: 'Applied', cls: 'badge-green' },
+  waived: { label: 'Waived', cls: 'badge-gray' },
+  superseded: { label: 'Superseded', cls: 'badge-red' },
+});
+
+export const ADJUSTMENT_TYPE_MAP = Object.freeze({
+  charge: { label: 'Charge', cls: 'badge-red' },
+  credit: { label: 'Credit', cls: 'badge-green' },
+  none: { label: 'None', cls: 'badge-gray' },
+});
+
 // ─── Contracts ─────────────────────────────────────────────────────────────────
 export const BILLING_CURRENCIES = Object.freeze(['TZS', 'USD', 'EUR', 'GBP']);
 

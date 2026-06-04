@@ -3,6 +3,7 @@ import { useState, useCallback } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BillingService from '@/services/BillingService';
+import useUiStore from '@/store/uiStore';
 import { BILLING_CURRENCIES, BILLING_INTERVALS } from '@/constants/status';
 
 function Field({ label, name, children, hint, errors }) {
@@ -42,14 +43,22 @@ export default function CreateBillingProfilePage() {
     e.preventDefault();
     setSaving(true);
     setErrors({});
-    const res = await BillingService.store(form);
-    setSaving(false);
-    if (res?.success && res?.data?.uuid) {
-      router.push(`/billing/${res.data.uuid}`);
-    } else if (res?.errors) {
-      setErrors(res.errors);
-    } else if (res?.message) {
-      setErrors({ general: [res.message] });
+    try {
+      const res = await BillingService.store(form);
+      if (res?.success && res?.data?.uuid) {
+        useUiStore.getState().showNotification('Billing profile created');
+        router.push(`/billing/${res.data.uuid}`);
+      } else if (res?.errors) {
+        setErrors(res.errors);
+        useUiStore.getState().showNotification('Please fix the errors below', 'error');
+      } else if (res?.message) {
+        setErrors({ general: [res.message] });
+        useUiStore.getState().showNotification(res.message, 'error');
+      }
+    } catch {
+      useUiStore.getState().showNotification('Network error. Please try again.', 'error');
+    } finally {
+      setSaving(false);
     }
   }, [form, router]);
 

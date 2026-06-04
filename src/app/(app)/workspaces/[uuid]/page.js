@@ -7,6 +7,7 @@ import WorkspaceService from '@/services/WorkspaceService';
 import { Skel, Badge, OccBar, ConfirmModal } from '@/components/ui';
 import { fmt, fmtAmt, pct, fmtDate, fmtCents } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP, ACCESS_CFG, CT_COLORS, SUB_STATUS_MAP } from '@/constants/status';
+import useUiStore from '@/store/uiStore';
 
 const TAB_DEFS = [
   { key: 'operational', label: 'Operational View', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
@@ -217,17 +218,17 @@ function PropertiesTab({ uuid }) {
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Property</th><th>Location</th><th className="text-center">Floors</th><th>Units</th><th className="text-center">Contracts</th><th>Status</th></tr></thead>
+          <thead><tr><th>Property</th><th>Location</th><th className="text-center">Floors</th><th>Units</th><th className="text-center">Contracts</th><th>Created</th><th>Status</th></tr></thead>
           <tbody>
             {loading && Array.from({ length: 4 }, (_, i) => (
               <tr key={i}>
                 <td><Skel w="w-32" h="h-3.5" /></td><td><Skel w="w-24" h="h-3" /></td>
                 <td><Skel w="w-8" h="h-3" /></td><td><Skel w="w-28" h="h-3" /></td>
-                <td><Skel w="w-10" h="h-3" /></td><td><Skel w="w-14" h="h-5" /></td>
+                <td><Skel w="w-10" h="h-3" /></td><td><Skel w="w-16" h="h-3" /></td><td><Skel w="w-14" h="h-5" /></td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
+              <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
             )}
             {!loading && rows.map((p) => {
               const loc = [p.district_name, p.region_name, p.country_name].filter(Boolean).join(', ');
@@ -256,6 +257,7 @@ function PropertiesTab({ uuid }) {
                     <div className="text-sm font-semibold text-gray-900">{fmt(p.active_contracts_count)}</div>
                     <div className="text-[10px] text-gray-400">{fmt(p.contracts_count)} total</div>
                   </td>
+                  <td className="text-xs text-gray-500">{fmtDate(p.created_at ?? p.createdAt)}</td>
                   <td><Badge map={WORKSPACE_STATUS_MAP} value={p.status} /></td>
                 </tr>
               );
@@ -390,6 +392,33 @@ function SubscriptionTab({ data, uuid }) {
 
         <div className="space-y-5">
           <div className="info-card">
+            <div className="info-card-header"><span className="info-card-title">Actions</span></div>
+            <div className="p-3 space-y-2">
+              <Link href={`/workspaces/${uuid}/billing`}
+                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+                Change Billing Profile
+              </Link>
+              <Link href={`/workspaces/${uuid}/usage-adjustments`}
+                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
+                </svg>
+                Usage Adjustments
+              </Link>
+              <Link href={`/workspaces/${uuid}/property-subscriptions`}
+                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
+                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 3.666V3m-6 3.666V3m0 7.334V21m6-10.666V21m0-3.666a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Property Subscriptions
+              </Link>
+            </div>
+          </div>
+
+          <div className="info-card">
             <div className="info-card-header"><span className="info-card-title">Usage</span></div>
             <div className="info-card-body">
               <div className="info-card-row"><span className="info-card-label">Properties</span><span className="info-card-value text-lg font-black">{fmt(usage?.registered_properties)}</span></div>
@@ -413,19 +442,6 @@ function SubscriptionTab({ data, uuid }) {
               )}
             </div>
           </div>
-
-          <div className="info-card">
-            <div className="info-card-header"><span className="info-card-title">Actions</span></div>
-            <div className="p-3 space-y-2">
-              <Link href={`/workspaces/${uuid}/billing`}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-                Change Billing Profile
-              </Link>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -433,11 +449,12 @@ function SubscriptionTab({ data, uuid }) {
 }
 
 // ─── Workspace Actions ───────────────────────────────────────────────────────
-function WorkspaceActions({ uuid, workspace }) {
+function WorkspaceActions({ uuid, workspace, onRefresh }) {
   const [acting, setActing] = useState(false);
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState({ title: '', message: '', action: null, danger: false });
+  const [confirmResult, setConfirmResult] = useState(null);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -448,6 +465,7 @@ function WorkspaceActions({ uuid, workspace }) {
 
   const promptAction = (title, message, fn, danger = false) => {
     setConfirmConfig({ title, message, action: fn, danger });
+    setConfirmResult(null);
     setConfirmOpen(true);
     setOpen(false);
   };
@@ -455,10 +473,28 @@ function WorkspaceActions({ uuid, workspace }) {
   const handleConfirm = async () => {
     if (!confirmConfig.action) return;
     setActing(true);
+    setConfirmResult(null);
+    try {
+      const res = await confirmConfig.action();
+      if (res?.success) {
+        setConfirmResult({ type: 'success', message: 'Action completed successfully.' });
+      } else {
+        setConfirmResult({ type: 'error', message: res?.message || 'Action failed. Please try again.' });
+      }
+    } catch {
+      setConfirmResult({ type: 'error', message: 'Something went wrong. Please try again.' });
+    } finally {
+      setActing(false);
+    }
+  };
+
+  const handleClose = () => {
     setConfirmOpen(false);
-    await confirmConfig.action();
-    setActing(false);
-    window.location.reload();
+    setConfirmResult(null);
+    // Refresh parent workspace state when modal closes after a result
+    if (confirmResult?.type === 'success' && onRefresh) {
+      onRefresh();
+    }
   };
 
   const isProvFailed = workspace?.provisioning_status === 'failed';
@@ -480,7 +516,7 @@ function WorkspaceActions({ uuid, workspace }) {
         {open && (
           <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg z-20 py-1">
             {isProvFailed && (
-              <button onClick={() => promptAction('Retry Provisioning', 'Retry provisioning for this workspace?', () => WorkspaceService.retryProvisioning(uuid))}
+              <button onClick={() => promptAction('Retry Provisioning', 'Retry provisioning for this workspace?', () => WorkspaceService.retryProvisioning(uuid, { showLoader: false }))}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                 Retry Provisioning
               </button>
@@ -488,16 +524,16 @@ function WorkspaceActions({ uuid, workspace }) {
             <button onClick={() => promptAction(
               isActive ? 'Suspend Workspace' : 'Reactivate Workspace',
               isActive ? 'Suspend this workspace?' : 'Reactivate this workspace?',
-              () => WorkspaceService.updateStatus(uuid, { status: isActive ? 'suspended' : 'active' })
+              () => WorkspaceService.updateStatus(uuid, { status: isActive ? 'suspended' : 'active' }, { showLoader: false })
             )}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
               {isActive ? 'Suspend Workspace' : 'Reactivate Workspace'}
             </button>
-            <button onClick={() => promptAction('Set Subscription Active', 'Activate subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'active' }))}
+            <button onClick={() => promptAction('Set Subscription Active', 'Activate subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'active' }, { showLoader: false }))}
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
               Set Subscription Active
             </button>
-            <button onClick={() => promptAction('Cancel Subscription', 'Cancel subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'canceled' }), true)}
+            <button onClick={() => promptAction('Cancel Subscription', 'Cancel subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'canceled' }, { showLoader: false }), true)}
               className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
               Cancel Subscription
             </button>
@@ -506,12 +542,15 @@ function WorkspaceActions({ uuid, workspace }) {
       </div>
       <ConfirmModal
         open={confirmOpen}
-        onClose={() => { setConfirmOpen(false); setActing(false); }}
+        onClose={handleClose}
         onConfirm={handleConfirm}
+        onRetry={handleConfirm}
         title={confirmConfig.title}
         message={confirmConfig.message}
         confirmLabel={confirmConfig.danger ? 'Cancel Subscription' : 'Confirm'}
+        danger={confirmConfig.danger}
         loading={acting}
+        result={confirmResult}
       />
     </>
   );
@@ -527,15 +566,16 @@ export default function WorkspaceDetailPage() {
   const [tabStatus, setTabStatus] = useState({ operational: 'loading', contracts: 'idle', properties: 'idle', location: 'idle', subscription: 'idle' });
   const fetchedRef = useRef(new Set(['operational']));
 
-  useEffect(() => {
-    WorkspaceService.operationalSummary(uuid).then((res) => {
-      const d = res?.data ?? null;
-      setTabData((prev) => ({ ...prev, operational: d }));
-      setWorkspace(d?.workspace ?? null);
-      setTabStatus((prev) => ({ ...prev, operational: d ? 'loaded' : 'empty' }));
-      setPageLoading(false);
-    });
+  const loadOperational = useCallback(async () => {
+    const res = await WorkspaceService.operationalSummary(uuid);
+    const d = res?.data ?? null;
+    setTabData((prev) => ({ ...prev, operational: d }));
+    setWorkspace(d?.workspace ?? null);
+    setTabStatus((prev) => ({ ...prev, operational: d ? 'loaded' : 'empty' }));
+    setPageLoading(false);
   }, [uuid]);
+
+  useEffect(() => { loadOperational(); }, [loadOperational]);
 
   const fetchTabData = useCallback(async (key) => {
     if (fetchedRef.current.has(key)) return;
@@ -628,6 +668,7 @@ export default function WorkspaceDetailPage() {
                   </span>
                 )}
               </div>
+              <p className="text-xs text-gray-400 mt-1.5">Created {fmtDate(workspace?.created_at ?? workspace?.createdAt)}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -640,7 +681,7 @@ export default function WorkspaceDetailPage() {
                 </span>
               </div>
             )}
-            <WorkspaceActions uuid={uuid} workspace={workspace} />
+            <WorkspaceActions uuid={uuid} workspace={workspace} onRefresh={loadOperational} />
           </div>
         </div>
       </div>

@@ -111,11 +111,12 @@ const WorkspaceService = {
    * @param {string} uuid
    * @param {{ status: 'active'|'suspended' }} data
    */
-  updateStatus(uuid, data) {
+  updateStatus(uuid, data, options = {}) {
     return apiFetch(`${TENANTS_PATH}/${uuid}/status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      ...options,
     });
   },
 
@@ -125,11 +126,12 @@ const WorkspaceService = {
    * @param {string} uuid
    * @param {{ status: 'active'|'trialing'|'past_due'|'canceled', effective_at? }} data
    */
-  updateSubscriptionStatus(uuid, data) {
+  updateSubscriptionStatus(uuid, data, options = {}) {
     return apiFetch(`${TENANTS_PATH}/${uuid}/subscription-status`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      ...options,
     });
   },
 
@@ -138,8 +140,8 @@ const WorkspaceService = {
    *
    * @param {string} uuid
    */
-  retryProvisioning(uuid) {
-    return apiFetch(`${TENANTS_PATH}/${uuid}/retry-provisioning`, { method: 'POST' });
+  retryProvisioning(uuid, options = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/retry-provisioning`, { method: 'POST', ...options });
   },
 
   /**
@@ -167,6 +169,51 @@ const WorkspaceService = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+    });
+  },
+
+  /**
+   * Preview the current usage-adjustment state for a workspace.
+   *
+   * @param {string} uuid
+   */
+  usageAdjustmentPreview(uuid) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/usage-adjustments/preview`);
+  },
+
+  /**
+   * Paginated list of usage adjustments for a workspace.
+   *
+   * @param {string} uuid
+   * @param {{ status?, adjustment_type?, sort?, per_page?, page? }} filters
+   */
+  usageAdjustments(uuid, filters = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/usage-adjustments${buildQuery(filters)}`);
+  },
+
+  /**
+   * Apply a pending usage adjustment.
+   *
+   * @param {string} uuid
+   * @param {string} adjustmentUuid
+   */
+  applyUsageAdjustment(uuid, adjustmentUuid, options = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/usage-adjustments/${adjustmentUuid}/apply`, {
+      method: 'POST',
+      ...options,
+    });
+  },
+
+  /**
+   * Waive a pending usage adjustment.
+   *
+   * @param {string} uuid
+   * @param {string} adjustmentUuid
+   */
+  waiveUsageAdjustment(uuid, adjustmentUuid, options = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/usage-adjustments/${adjustmentUuid}/waive`, {
+      method: 'POST',
+      ...options,
     });
   },
 };

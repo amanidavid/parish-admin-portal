@@ -3,7 +3,8 @@ import { useEffect, useState, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import BillingService from '@/services/BillingService';
-import { Skel, Badge, InfoRow } from '@/components/ui';
+import useUiStore from '@/store/uiStore';
+import { Skel, Badge, InfoRow, ConfirmModal } from '@/components/ui';
 import { BILLING_STATUS_MAP, RULE_STATUS_MAP } from '@/constants/status';
 
 function OverviewTab({ profile }) {
@@ -62,7 +63,10 @@ function RulesTab({ uuid, profile }) {
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
   const [modal, setModal] = useState(null); // { mode:'create'|'edit', rule? }
-  const [deleting, setDeleting] = useState(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmRule, setConfirmRule] = useState(null);
+  const [confirmResult, setConfirmResult] = useState(null);
+  const [confirmLoading, setConfirmLoading] = useState(false);
 
   const loadRules = useCallback(async (pg) => {
     setLoading(true);
@@ -73,13 +77,36 @@ function RulesTab({ uuid, profile }) {
 
   useEffect(() => { loadRules(1); }, [loadRules]);
 
-  const handleDelete = useCallback(async (ruleUuid) => {
-    if (!confirm('Delete this billing rule?')) return;
-    setDeleting(ruleUuid);
-    await BillingService.updateRule(ruleUuid, { status: 'inactive' });
-    setDeleting(null);
-    loadRules(page);
-  }, [page, loadRules]);
+  const promptDelete = useCallback((rule) => {
+    setConfirmRule(rule);
+    setConfirmResult(null);
+    setConfirmOpen(true);
+  }, []);
+
+  const handleDeleteConfirm = useCallback(async () => {
+    if (!confirmRule) return;
+    setConfirmLoading(true);
+    setConfirmResult(null);
+    try {
+      const res = await BillingService.updateRule(confirmRule.uuid, { status: 'inactive' }, { showLoader: false });
+      if (res?.success) {
+        setConfirmResult({ type: 'success', message: 'Rule deactivated successfully.' });
+        loadRules(page);
+      } else {
+        setConfirmResult({ type: 'error', message: res?.message || 'Failed to deactivate rule.' });
+      }
+    } catch {
+      setConfirmResult({ type: 'error', message: 'Network error. Please try again.' });
+    } finally {
+      setConfirmLoading(false);
+    }
+  }, [confirmRule, page, loadRules]);
+
+  const handleClose = useCallback(() => {
+    setConfirmOpen(false);
+    setConfirmResult(null);
+    setConfirmRule(null);
+  }, []);
 
   const fmtCents = (c, cur) => `${cur || 'TZS'} ${(c / 100).toFixed(2)}`;
 
@@ -147,9 +174,9 @@ function RulesTab({ uuid, profile }) {
                       className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">
                       Edit
                     </button>
-                    <button onClick={() => handleDelete(r.uuid)} disabled={deleting === r.uuid}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-100 hover:bg-red-50 transition-colors disabled:opacity-40">
-                      {deleting === r.uuid ? '…' : 'Delete'}
+                    <button onClick={() => promptDelete(r)}
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-red-600 border border-red-100 hover:bg-red-50 transition-colors">
+                      Delete
                     </button>
                   </div>
                 </td>
@@ -174,6 +201,19 @@ function RulesTab({ uuid, profile }) {
           </div>
         )}
       </div>
+
+      <ConfirmModal
+        open={confirmOpen}
+        onClose={handleClose}
+        onConfirm={handleDeleteConfirm}
+        onRetry={handleDeleteConfirm}
+        title="Deactivate Rule"
+        message={confirmRule ? `Deactivate rule "${confirmRule.range_start}${confirmRule.range_end ? `–${confirmRule.range_end}` : '+'} units"? This will mark it as inactive.` : ''}
+        confirmLabel="Deactivate"
+        danger={true}
+        loading={confirmLoading}
+        result={confirmResult}
+      />
 
       {modal && (
         <RuleModal
@@ -221,13 +261,25 @@ function RuleModal({ profileUuid, profileCurrency, mode, rule, onClose, onSaved 
       sort_order: parseInt(form.sort_order, 10) || 0,
     };
 
-    const res = mode === 'create'
-      ? await BillingService.storeRule(profileUuid, payload)
-      : await BillingService.updateRule(rule.uuid, payload);
-    setSaving(false);
-    if (res?.success) { onSaved(); }
-    else if (res?.errors) { setErrors(res.errors); }
-    else if (res?.message) { setErrors({ general: [res.message] }); }
+    try {
+      const res = mode === 'create'
+        ? await BillingService.storeRule(profileUuid, payload)
+        : await BillingService.updateRule(rule.uuid, payload);
+      if (res?.success) {
+        useUiStore.getState().showNotification(mode === 'create' ? 'Rule added' : 'Rule updated');
+        onSaved();
+      } else if (res?.errors) {
+        setErrors(res.errors);
+        useUiStore.getState().showNotification('Please fix the errors below', 'error');
+      } else if (res?.message) {
+        setErrors({ general: [res.message] });
+        useUiStore.getState().showNotification(res.message, 'error');
+      }
+    } catch {
+      useUiStore.getState().showNotification('Network error. Please try again.', 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const Field = ({ label, name, children }) => (

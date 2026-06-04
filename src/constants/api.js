@@ -10,6 +10,10 @@ export const TENANTS_PATH = `${ADMIN_API_BASE}/tenants`;
 export const BILLING_PATH = `${ADMIN_API_BASE}/billing-profiles`;
 export const BILLING_RULES_PATH = `${ADMIN_API_BASE}/billing-rules`;
 export const PLATFORM_OVERVIEW_PATH = `${ADMIN_API_BASE}/platform/overview`;
+export const PROPERTY_SUBSCRIPTION_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for property subscriptions
+export const PROPERTY_SUBSCRIPTION_PAYMENT_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for payments
+export const REPORTS_PATH = `${ADMIN_API_BASE}/reports`;
+export const AUTOMATION_TASKS_PATH = `${ADMIN_API_BASE}/automation/tasks`;
 
 // BFF auth routes (Next.js internal)
 export const ADMIN_LOGIN_ROUTE = '/api/admin/auth/login';

@@ -84,12 +84,24 @@ const BillingService = {
    * @param {string} ruleUuid
    * @param {object} data
    */
-  updateRule(ruleUuid, data) {
+  updateRule(ruleUuid, data, options = {}) {
     return apiFetch(`${BILLING_RULES_PATH}/${ruleUuid}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      ...options,
     });
+  },
+
+  /**
+   * List billing rules directly (not via a profile).
+   * Useful for dropdowns where rules need to be filtered by status,
+   * effective date, and registered units.
+   *
+   * @param {{ status?, effective_on?, registered_units?, per_page?, page? }} filters
+   */
+  billingRules(filters = {}) {
+    return apiFetch(`${BILLING_RULES_PATH}${buildQuery(filters)}`);
   },
 };
 
