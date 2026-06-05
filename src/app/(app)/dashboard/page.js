@@ -1,28 +1,170 @@
 'use client';
-import { useEffect, useState, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import useAdminAuthStore from '@/store/adminAuthStore';
 import PlatformService from '@/services/PlatformService';
+import PropertySubscriptionService from '@/services/PropertySubscriptionService';
 import { Skel, Badge } from '@/components/ui';
-import { fmt } from '@/lib/formatters';
+import { fmt, fmtCents } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP } from '@/constants/status';
+import AnalyticsService from '@/services/AnalyticsService';
+import { SimpleBarChart, DualAxisChart, StackedBarChart, DonutChart, HorizontalBarChart } from '@/components/charts';
+import { PeriodSwitcher } from '@/components/analytics';
 
 // ─── Module-level cache ── persists across client navigations, TTL 30 s ──────
 const _cache = { data: null, ts: 0 };
 const CACHE_TTL = 30_000;
+const REVENUE_EMPTY_SUMMARY = { total_collected_amount_cents: 0 };
+const GROWTH_EMPTY_SUMMARY = { new_properties: 0, ending_cumulative_total_properties: 0 };
+const STATUS_EMPTY_SUMMARY = { total_properties: 0, active_subscribed_properties: 0, expired_properties: 0, unsubscribed_properties: 0 };
+const MONTH_OPTIONS = [
+  { value: 1, label: 'January' },
+  { value: 2, label: 'February' },
+  { value: 3, label: 'March' },
+  { value: 4, label: 'April' },
+  { value: 5, label: 'May' },
+  { value: 6, label: 'June' },
+  { value: 7, label: 'July' },
+  { value: 8, label: 'August' },
+  { value: 9, label: 'September' },
+  { value: 10, label: 'October' },
+  { value: 11, label: 'November' },
+  { value: 12, label: 'December' },
+];
+
+
+// Parses bucket_start safely in UTC so the calendar day never shifts
+// regardless of the user's local timezone (e.g. UTC+03).
+function parseBucketDate(rawDate) {
+  const str = String(rawDate).trim().slice(0, 10);
+  const [y, m, d] = str.split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const date = new Date(Date.UTC(y, m - 1, d));
+  return Number.isNaN(date.getTime()) ? null : { date, day: d };
+}
+
+function formatUtcDate(date, options) {
+  return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', ...options }).format(date);
+}
+
+function formatWeeklyRangeLabel(startDate, endDate) {
+  if (!startDate) return 'Unknown';
+  if (!endDate) return `Week of ${formatUtcDate(startDate, { day: 'numeric', month: 'short' })}`;
+
+  const sameMonth = startDate.getUTCFullYear() === endDate.getUTCFullYear()
+    && startDate.getUTCMonth() === endDate.getUTCMonth();
+
+  if (sameMonth) {
+    return `${formatUtcDate(startDate, { day: 'numeric' })}-${formatUtcDate(endDate, { day: 'numeric', month: 'short' })}`;
+  }
+
+  return `${formatUtcDate(startDate, { day: 'numeric', month: 'short' })}-${formatUtcDate(endDate, { day: 'numeric', month: 'short' })}`;
+}
+
+function formatRevenueLabel(item, bucketBy, period, index) {
+  const parsedStart = parseBucketDate(item?.bucket_start || item?.key);
+  const parsedEnd = parseBucketDate(item?.bucket_end);
+  if (bucketBy === 'week') {
+    return `Week ${index + 1}`;
+  }
+
+  if (!parsedStart) return item?.label || 'Unknown';
+  const { date, day } = parsedStart;
+  const fmtOpts = { timeZone: 'UTC' };
+
+  if (period === 'year' || bucketBy === 'month') {
+    return new Intl.DateTimeFormat('en-US', { ...fmtOpts, month: 'short' }).format(date);
+  }
+
+  if (period === 'week') {
+    return new Intl.DateTimeFormat('en-US', { ...fmtOpts, weekday: 'short' }).format(date);
+  }
+
+  if (period === 'month') {
+    return String(day);
+  }
+
+  return new Intl.DateTimeFormat('en-US', { ...fmtOpts, day: 'numeric', month: 'short' }).format(date);
+}
+
+function normalizeRevenueSeries(series, filters, period) {
+  const bucketBy = filters?.bucket_by || '';
+
+  return Array.isArray(series)
+    ? series.map((item, index) => ({
+      ...item,
+      label: formatRevenueLabel(item, bucketBy, period, index),
+    }))
+    : [];
+}
+
+function formatRevenueRange(filters, period) {
+  if (!filters?.start_date || !filters?.end_date) return '';
+
+  const start = parseBucketDate(filters.start_date);
+  const end = parseBucketDate(filters.end_date);
+  if (!start || !end) return '';
+
+  const fmtOpts = { timeZone: 'UTC' };
+
+  if (period === 'year') {
+    return new Intl.DateTimeFormat('en-US', { ...fmtOpts, year: 'numeric' }).format(start.date);
+  }
+
+  if (period === 'month') {
+    return new Intl.DateTimeFormat('en-US', { ...fmtOpts, month: 'long', year: 'numeric' }).format(start.date);
+  }
+
+  const formatter = new Intl.DateTimeFormat('en-GB', { ...fmtOpts, day: '2-digit', month: 'short', year: 'numeric' });
+  return `${formatter.format(start.date)} - ${formatter.format(end.date)}`;
+}
+
+function formatBucketLabel(bucketBy) {
+  if (!bucketBy) return '';
+  return `Grouped by ${bucketBy}`;
+}
+
+function getYearOptions(currentYear) {
+  return Array.from({ length: 6 }, (_, index) => {
+    const value = currentYear - index;
+    return { value, label: String(value) };
+  });
+}
+
+function RevenueControlSelect({ value, onChange, options, ariaLabel }) {
+  return (
+    <div className="relative">
+      <select
+        value={String(value)}
+        onChange={onChange}
+        aria-label={ariaLabel}
+        className="appearance-none bg-white border border-gray-200 text-gray-700 text-xs font-semibold rounded-lg pl-3 pr-8 py-1.5 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent cursor-pointer"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={String(option.value)}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+      <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+      </svg>
+    </div>
+  );
+}
 
 // Decorative bar patterns — one per card category (static visual)
 const BARS = {
   total: [3, 5, 4, 6, 5, 8, 7, 9, 8, 10],
   active: [4, 6, 5, 7, 8, 7, 9, 8, 10, 9],
-  suspended: [8, 6, 7, 5, 6, 4, 5, 3, 4, 3],
-  failed: [5, 4, 6, 4, 5, 4, 3, 5, 3, 2],
-  billing: [3, 5, 5, 6, 6, 7, 7, 8, 8, 9],
-  billingActive: [4, 6, 6, 8, 7, 9, 8, 9, 10, 9],
+  expired: [8, 6, 7, 5, 6, 4, 5, 3, 4, 3],
+  unsubscribed: [5, 4, 6, 4, 5, 4, 3, 5, 3, 2],
+  properties: [3, 5, 5, 6, 6, 7, 7, 8, 8, 9],
+  payments: [4, 6, 6, 8, 7, 9, 8, 9, 10, 9],
 };
 
 // ─── Platform Stat Card ───────────────────────────────────────────────────────
-function StatCard({ id, label, value, icon, color, bg, loading, href }) {
+function StatCard({ id, label, value, icon, color, bg, loading, href, formatter }) {
   const bars = BARS[id] ?? BARS.total;
   const inner = (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-5 flex flex-col justify-between min-h-[116px] overflow-hidden relative group transition-all hover:shadow-md hover:-translate-y-0.5">
@@ -44,7 +186,7 @@ function StatCard({ id, label, value, icon, color, bg, loading, href }) {
       <div className="mt-3">
         {loading
           ? <Skel w="w-14" h="h-7" />
-          : <p className="text-[26px] font-black text-gray-900 leading-none tabular-nums">{fmt(value)}</p>}
+          : <p className="text-[26px] font-black text-gray-900 leading-none tabular-nums">{formatter ? formatter(value) : fmt(value)}</p>}
         <p className="text-[11px] text-gray-400 font-semibold uppercase tracking-wider mt-1.5 truncate">{label}</p>
       </div>
       {/* Bottom color accent */}
@@ -58,42 +200,500 @@ function StatCard({ id, label, value, icon, color, bg, loading, href }) {
 
 export default function DashboardPage() {
   const user = useAdminAuthStore((s) => s.user);
+  const now = useMemo(() => new Date(), []);
+  const currentYear = now.getFullYear();
+  const currentMonth = now.getMonth() + 1;
 
   // ── seed from cache immediately — zero flicker on back-navigation ────────
   const cached = _cache.ts && (Date.now() - _cache.ts < CACHE_TTL) ? _cache.data : null;
   const [stats, setStats] = useState(
-    cached?.stats ?? { total: 0, active: 0, suspended: 0, failed: 0, billing: 0, billingActive: 0 }
+    cached?.stats ?? {
+      total: 0, active: 0, expired: 0, unsubscribed: 0,
+      properties: 0, payments: 0, collected: 0,
+    }
   );
   const [workspaces, setWorkspaces] = useState(cached?.workspaces ?? []);
   const [loading, setLoading] = useState(!cached);
 
+  // ── Revenue Trend state ──
+  const [revenuePeriod, setRevenuePeriod] = useState('month');
+  const [revenueSeries, setRevenueSeries] = useState([]);
+  const [revenueSummary, setRevenueSummary] = useState(REVENUE_EMPTY_SUMMARY);
+  const [revenueFilters, setRevenueFilters] = useState(null);
+  const [revenueGeneratedAt, setRevenueGeneratedAt] = useState('');
+  const [revenueLoading, setRevenueLoading] = useState(true);
+
+  // Per-period independent state
+  const [monthState, setMonthState] = useState({ year: currentYear, month: currentMonth });
+  const [yearState, setYearState] = useState({ year: currentYear });
+  const [customState, setCustomState] = useState({ startDate: '', endDate: '', bucketBy: 'month' });
+
+  const latestRequestRef = useRef(0);
+
+  const yearOptions = useMemo(() => getYearOptions(currentYear), [currentYear]);
+
+  const revenueRequestParams = useMemo(() => {
+    if (revenuePeriod === 'week') return { period: 'week' };
+    if (revenuePeriod === 'month') {
+      return { period: 'month', year: monthState.year, month: monthState.month };
+    }
+    if (revenuePeriod === 'year') {
+      return { period: 'year', year: yearState.year };
+    }
+    const params = { period: 'custom' };
+    if (customState.startDate) params.start_date = customState.startDate;
+    if (customState.endDate) params.end_date = customState.endDate;
+    if (customState.bucketBy) params.bucket_by = customState.bucketBy;
+    return params;
+  }, [revenuePeriod, monthState, yearState, customState]);
+
+  const handleRevenuePeriodChange = useCallback((value) => {
+    setRevenuePeriod(value);
+  }, []);
+  const handleMonthYearChange = useCallback((event) => {
+    setMonthState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleMonthMonthChange = useCallback((event) => {
+    setMonthState((prev) => ({ ...prev, month: Number(event.target.value) }));
+  }, []);
+  const handleYearYearChange = useCallback((event) => {
+    setYearState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleCustomStartChange = useCallback((event) => {
+    setCustomState((prev) => ({ ...prev, startDate: event.target.value }));
+  }, []);
+  const handleCustomEndChange = useCallback((event) => {
+    setCustomState((prev) => ({ ...prev, endDate: event.target.value }));
+  }, []);
+  const handleCustomBucketChange = useCallback((event) => {
+    setCustomState((prev) => ({ ...prev, bucketBy: event.target.value }));
+  }, []);
+  const revenueTooltipFormatter = useCallback((value) => fmtCents(value), []);
+  const revenueYAxisTickFormatter = useCallback(
+    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format((value || 0) / 100),
+    []
+  );
+  const revenueXAxisLabel = useMemo(() => {
+    const bucket = revenueFilters?.bucket_by;
+    if (!bucket) return '';
+    return bucket.charAt(0).toUpperCase() + bucket.slice(1);
+  }, [revenueFilters]);
+  const revenueYAxisLabel = 'Amount (TZS)';
+  const revenueRangeLabel = useMemo(
+    () => formatRevenueRange(revenueFilters, revenuePeriod),
+    [revenueFilters, revenuePeriod]
+  );
+  const revenueBucketLabel = useMemo(
+    () => formatBucketLabel(revenueFilters?.bucket_by),
+    [revenueFilters]
+  );
+
+  // ── Property Growth Trend state ──
+  const [growthPeriod, setGrowthPeriod] = useState('month');
+  const [growthSeries, setGrowthSeries] = useState([]);
+  const [growthSummary, setGrowthSummary] = useState(GROWTH_EMPTY_SUMMARY);
+  const [growthFilters, setGrowthFilters] = useState(null);
+  const [growthGeneratedAt, setGrowthGeneratedAt] = useState('');
+  const [growthLoading, setGrowthLoading] = useState(true);
+
+  const [growthMonthState, setGrowthMonthState] = useState({ year: currentYear, month: currentMonth });
+  const [growthYearState, setGrowthYearState] = useState({ year: currentYear });
+  const [growthCustomState, setGrowthCustomState] = useState({ startDate: '', endDate: '', bucketBy: 'month' });
+  const latestGrowthRequestRef = useRef(0);
+
+  const growthRequestParams = useMemo(() => {
+    if (growthPeriod === 'week') return { period: 'week' };
+    if (growthPeriod === 'month') {
+      return { period: 'month', year: growthMonthState.year, month: growthMonthState.month };
+    }
+    if (growthPeriod === 'year') {
+      return { period: 'year', year: growthYearState.year };
+    }
+    const params = { period: 'custom' };
+    if (growthCustomState.startDate) params.start_date = growthCustomState.startDate;
+    if (growthCustomState.endDate) params.end_date = growthCustomState.endDate;
+    if (growthCustomState.bucketBy) params.bucket_by = growthCustomState.bucketBy;
+    return params;
+  }, [growthPeriod, growthMonthState, growthYearState, growthCustomState]);
+
+  const handleGrowthPeriodChange = useCallback((value) => setGrowthPeriod(value), []);
+  const handleGrowthMonthYearChange = useCallback((event) => {
+    setGrowthMonthState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleGrowthMonthMonthChange = useCallback((event) => {
+    setGrowthMonthState((prev) => ({ ...prev, month: Number(event.target.value) }));
+  }, []);
+  const handleGrowthYearYearChange = useCallback((event) => {
+    setGrowthYearState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleGrowthCustomStartChange = useCallback((event) => {
+    setGrowthCustomState((prev) => ({ ...prev, startDate: event.target.value }));
+  }, []);
+  const handleGrowthCustomEndChange = useCallback((event) => {
+    setGrowthCustomState((prev) => ({ ...prev, endDate: event.target.value }));
+  }, []);
+  const handleGrowthCustomBucketChange = useCallback((event) => {
+    setGrowthCustomState((prev) => ({ ...prev, bucketBy: event.target.value }));
+  }, []);
+  const growthXAxisLabel = useMemo(() => {
+    const bucket = growthFilters?.bucket_by;
+    if (!bucket) return '';
+    return bucket.charAt(0).toUpperCase() + bucket.slice(1);
+  }, [growthFilters]);
+  const growthYAxisLabel = 'New Properties';
+  const growthLineAxisLabel = 'Cumulative Total';
+  const growthYAxisTickFormatter = useCallback(
+    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 0 }).format(value || 0),
+    []
+  );
+  const growthRangeLabel = useMemo(
+    () => formatRevenueRange(growthFilters, growthPeriod),
+    [growthFilters, growthPeriod]
+  );
+  const growthBucketLabel = useMemo(
+    () => formatBucketLabel(growthFilters?.bucket_by),
+    [growthFilters]
+  );
+
+  // ── Subscription Status Trend state ──
+  const [statusPeriod, setStatusPeriod] = useState('month');
+  const [statusSeries, setStatusSeries] = useState([]);
+  const [statusSummary, setStatusSummary] = useState(STATUS_EMPTY_SUMMARY);
+  const [statusFilters, setStatusFilters] = useState(null);
+  const [statusGeneratedAt, setStatusGeneratedAt] = useState('');
+  const [statusLoading, setStatusLoading] = useState(true);
+
+  const [statusMonthState, setStatusMonthState] = useState({ year: currentYear, month: currentMonth });
+  const [statusYearState, setStatusYearState] = useState({ year: currentYear });
+  const [statusCustomState, setStatusCustomState] = useState({ startDate: '', endDate: '', bucketBy: 'month' });
+  const latestStatusRequestRef = useRef(0);
+
+  const statusRequestParams = useMemo(() => {
+    if (statusPeriod === 'week') return { period: 'week' };
+    if (statusPeriod === 'month') {
+      return { period: 'month', year: statusMonthState.year, month: statusMonthState.month };
+    }
+    if (statusPeriod === 'year') {
+      return { period: 'year', year: statusYearState.year };
+    }
+    const params = { period: 'custom' };
+    if (statusCustomState.startDate) params.start_date = statusCustomState.startDate;
+    if (statusCustomState.endDate) params.end_date = statusCustomState.endDate;
+    if (statusCustomState.bucketBy) params.bucket_by = statusCustomState.bucketBy;
+    return params;
+  }, [statusPeriod, statusMonthState, statusYearState, statusCustomState]);
+
+  const handleStatusPeriodChange = useCallback((value) => setStatusPeriod(value), []);
+  const handleStatusMonthYearChange = useCallback((event) => {
+    setStatusMonthState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleStatusMonthMonthChange = useCallback((event) => {
+    setStatusMonthState((prev) => ({ ...prev, month: Number(event.target.value) }));
+  }, []);
+  const handleStatusYearYearChange = useCallback((event) => {
+    setStatusYearState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleStatusCustomStartChange = useCallback((event) => {
+    setStatusCustomState((prev) => ({ ...prev, startDate: event.target.value }));
+  }, []);
+  const handleStatusCustomEndChange = useCallback((event) => {
+    setStatusCustomState((prev) => ({ ...prev, endDate: event.target.value }));
+  }, []);
+  const handleStatusCustomBucketChange = useCallback((event) => {
+    setStatusCustomState((prev) => ({ ...prev, bucketBy: event.target.value }));
+  }, []);
+  const statusRangeLabel = useMemo(
+    () => formatRevenueRange(statusFilters, statusPeriod),
+    [statusFilters, statusPeriod]
+  );
+  const statusBucketLabel = useMemo(
+    () => formatBucketLabel(statusFilters?.bucket_by),
+    [statusFilters]
+  );
+
+  // ── Subscription Status Split state ──
+  const [splitSeries, setSplitSeries] = useState([]);
+  const [splitSummary, setSplitSummary] = useState(STATUS_EMPTY_SUMMARY);
+  const [splitLoading, setSplitLoading] = useState(true);
+  const [splitGeneratedAt, setSplitGeneratedAt] = useState('');
+
+  // ── Top Billing Rules state ──
+  const [billingPeriod, setBillingPeriod] = useState('month');
+  const [billingSeries, setBillingSeries] = useState([]);
+  const [billingSummary, setBillingSummary] = useState({ billing_rules_count: 0, total_collected_amount_cents: 0 });
+  const [billingFilters, setBillingFilters] = useState(null);
+  const [billingGeneratedAt, setBillingGeneratedAt] = useState('');
+  const [billingLoading, setBillingLoading] = useState(true);
+
+  const [billingMonthState, setBillingMonthState] = useState({ year: currentYear, month: currentMonth });
+  const [billingYearState, setBillingYearState] = useState({ year: currentYear });
+  const [billingCustomState, setBillingCustomState] = useState({ startDate: '', endDate: '', bucketBy: 'month' });
+  const latestBillingRequestRef = useRef(0);
+
+  const billingRequestParams = useMemo(() => {
+    if (billingPeriod === 'week') return { period: 'week' };
+    if (billingPeriod === 'month') {
+      return { period: 'month', year: billingMonthState.year, month: billingMonthState.month };
+    }
+    if (billingPeriod === 'year') {
+      return { period: 'year', year: billingYearState.year };
+    }
+    const params = { period: 'custom' };
+    if (billingCustomState.startDate) params.start_date = billingCustomState.startDate;
+    if (billingCustomState.endDate) params.end_date = billingCustomState.endDate;
+    if (billingCustomState.bucketBy) params.bucket_by = billingCustomState.bucketBy;
+    return params;
+  }, [billingPeriod, billingMonthState, billingYearState, billingCustomState]);
+
+  const handleBillingPeriodChange = useCallback((value) => setBillingPeriod(value), []);
+  const handleBillingMonthYearChange = useCallback((event) => {
+    setBillingMonthState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleBillingMonthMonthChange = useCallback((event) => {
+    setBillingMonthState((prev) => ({ ...prev, month: Number(event.target.value) }));
+  }, []);
+  const handleBillingYearYearChange = useCallback((event) => {
+    setBillingYearState((prev) => ({ ...prev, year: Number(event.target.value) }));
+  }, []);
+  const handleBillingCustomStartChange = useCallback((event) => {
+    setBillingCustomState((prev) => ({ ...prev, startDate: event.target.value }));
+  }, []);
+  const handleBillingCustomEndChange = useCallback((event) => {
+    setBillingCustomState((prev) => ({ ...prev, endDate: event.target.value }));
+  }, []);
+  const handleBillingCustomBucketChange = useCallback((event) => {
+    setBillingCustomState((prev) => ({ ...prev, bucketBy: event.target.value }));
+  }, []);
+  const billingRangeLabel = useMemo(
+    () => formatRevenueRange(billingFilters, billingPeriod),
+    [billingFilters, billingPeriod]
+  );
+  const billingBucketLabel = useMemo(
+    () => formatBucketLabel(billingFilters?.bucket_by),
+    [billingFilters]
+  );
+  const billingTooltipFormatter = useCallback((value, name) => {
+    if (name === 'total_collected_amount_cents') return [fmtCents(value), 'Revenue'];
+    return [value, name];
+  }, []);
+  const billingXTickFormatter = useCallback(
+    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format((value || 0) / 100),
+    []
+  );
+
+  // ── Fetch revenue trend ──
   useEffect(() => {
-    if (cached) return; // cache is fresh — nothing to fetch
-    PlatformService.overview().then((res) => {
-      if (res?.success) {
-        const d = res.data;
-        const newStats = {
-          total: d.summary?.total_workspaces ?? 0,
-          active: d.summary?.active_workspaces ?? 0,
-          suspended: d.summary?.suspended_workspaces ?? 0,
-          failed: d.summary?.provisioning_failed_workspaces ?? 0,
-          billing: d.summary?.total_billing_profiles ?? 0,
-          billingActive: d.summary?.active_billing_profiles ?? 0,
-        };
-        const newWorkspaces = d.recent_workspaces ?? [];
-        _cache.data = { stats: newStats, workspaces: newWorkspaces };
-        _cache.ts = Date.now();
-        setStats(newStats);
-        setWorkspaces(newWorkspaces);
+    setRevenueLoading(true);
+    setRevenueFilters(null);
+    setRevenueGeneratedAt('');
+
+    if (revenuePeriod === 'custom' && (!revenueRequestParams.start_date || !revenueRequestParams.end_date)) {
+      setRevenueSeries([]);
+      setRevenueSummary(REVENUE_EMPTY_SUMMARY);
+      setRevenueLoading(false);
+      return;
+    }
+
+    const requestId = ++latestRequestRef.current;
+
+    AnalyticsService.revenueTrend(revenueRequestParams).then((res) => {
+      if (requestId !== latestRequestRef.current) return;
+
+      const payload = res?.data ?? null;
+
+      if (payload) {
+        const filters = payload.filters || null;
+        setRevenueSeries(normalizeRevenueSeries(payload.series, filters, revenuePeriod));
+        setRevenueSummary(payload.summary || REVENUE_EMPTY_SUMMARY);
+        setRevenueFilters(filters);
+        setRevenueGeneratedAt(payload.generated_at || '');
+      } else {
+        setRevenueSeries([]);
+        setRevenueSummary(REVENUE_EMPTY_SUMMARY);
+        setRevenueFilters(null);
+        setRevenueGeneratedAt('');
       }
+      setRevenueLoading(false);
+    });
+  }, [revenuePeriod, revenueRequestParams]);
+
+  // ── Fetch property growth trend ──
+  useEffect(() => {
+    setGrowthLoading(true);
+    setGrowthFilters(null);
+    setGrowthGeneratedAt('');
+
+    if (growthPeriod === 'custom' && (!growthRequestParams.start_date || !growthRequestParams.end_date)) {
+      setGrowthSeries([]);
+      setGrowthSummary(GROWTH_EMPTY_SUMMARY);
+      setGrowthLoading(false);
+      return;
+    }
+
+    const requestId = ++latestGrowthRequestRef.current;
+
+    AnalyticsService.propertyGrowthTrend(growthRequestParams).then((res) => {
+      if (requestId !== latestGrowthRequestRef.current) return;
+
+      const payload = res?.data ?? null;
+
+      if (payload) {
+        const filters = payload.filters || null;
+        const bucketBy = filters?.bucket_by || '';
+        const formattedSeries = Array.isArray(payload.series)
+          ? payload.series.map((item, index) => ({
+            ...item,
+            label: formatRevenueLabel(item, bucketBy, growthPeriod, index),
+          }))
+          : [];
+        setGrowthSeries(formattedSeries);
+        setGrowthSummary(payload.summary || GROWTH_EMPTY_SUMMARY);
+        setGrowthFilters(filters);
+        setGrowthGeneratedAt(payload.generated_at || '');
+      } else {
+        setGrowthSeries([]);
+        setGrowthSummary(GROWTH_EMPTY_SUMMARY);
+        setGrowthFilters(null);
+        setGrowthGeneratedAt('');
+      }
+      setGrowthLoading(false);
+    });
+  }, [growthPeriod, growthRequestParams]);
+
+  // ── Fetch subscription status trend ──
+  useEffect(() => {
+    setStatusLoading(true);
+    setStatusFilters(null);
+    setStatusGeneratedAt('');
+
+    if (statusPeriod === 'custom' && (!statusRequestParams.start_date || !statusRequestParams.end_date)) {
+      setStatusSeries([]);
+      setStatusSummary(STATUS_EMPTY_SUMMARY);
+      setStatusLoading(false);
+      return;
+    }
+
+    const requestId = ++latestStatusRequestRef.current;
+
+    AnalyticsService.subscriptionStatusTrend(statusRequestParams).then((res) => {
+      if (requestId !== latestStatusRequestRef.current) return;
+
+      const payload = res?.data ?? null;
+
+      if (payload) {
+        const filters = payload.filters || null;
+        const bucketBy = filters?.bucket_by || '';
+        const formattedSeries = Array.isArray(payload.series)
+          ? payload.series.map((item, index) => ({
+            ...item,
+            label: formatRevenueLabel(item, bucketBy, statusPeriod, index),
+          }))
+          : [];
+        setStatusSeries(formattedSeries);
+        setStatusSummary(payload.summary || STATUS_EMPTY_SUMMARY);
+        setStatusFilters(filters);
+        setStatusGeneratedAt(payload.generated_at || '');
+      } else {
+        setStatusSeries([]);
+        setStatusSummary(STATUS_EMPTY_SUMMARY);
+        setStatusFilters(null);
+        setStatusGeneratedAt('');
+      }
+      setStatusLoading(false);
+    });
+  }, [statusPeriod, statusRequestParams]);
+
+  // ── Fetch subscription status split (snapshot) ──
+  useEffect(() => {
+    setSplitLoading(true);
+    AnalyticsService.subscriptionStatusSplit().then((res) => {
+      const payload = res?.data ?? null;
+      if (payload) {
+        setSplitSeries(payload.series || []);
+        setSplitSummary(payload.summary || STATUS_EMPTY_SUMMARY);
+        setSplitGeneratedAt(payload.generated_at || '');
+      } else {
+        setSplitSeries([]);
+        setSplitSummary(STATUS_EMPTY_SUMMARY);
+        setSplitGeneratedAt('');
+      }
+      setSplitLoading(false);
+    });
+  }, []);
+
+  // ── Fetch top billing rules ──
+  useEffect(() => {
+    setBillingLoading(true);
+    setBillingFilters(null);
+    setBillingGeneratedAt('');
+
+    if (billingPeriod === 'custom' && (!billingRequestParams.start_date || !billingRequestParams.end_date)) {
+      setBillingSeries([]);
+      setBillingSummary({ billing_rules_count: 0, total_collected_amount_cents: 0 });
+      setBillingLoading(false);
+      return;
+    }
+
+    const requestId = ++latestBillingRequestRef.current;
+
+    AnalyticsService.topBillingRules(billingRequestParams).then((res) => {
+      if (requestId !== latestBillingRequestRef.current) return;
+
+      const payload = res?.data ?? null;
+
+      if (payload) {
+        setBillingSeries(payload.series || []);
+        setBillingSummary(payload.summary || { billing_rules_count: 0, total_collected_amount_cents: 0 });
+        setBillingFilters(payload.filters || null);
+        setBillingGeneratedAt(payload.generated_at || '');
+      } else {
+        setBillingSeries([]);
+        setBillingSummary({ billing_rules_count: 0, total_collected_amount_cents: 0 });
+        setBillingFilters(null);
+        setBillingGeneratedAt('');
+      }
+      setBillingLoading(false);
+    });
+  }, [billingPeriod, billingRequestParams]);
+
+  useEffect(() => {
+    if (cached) return;
+    Promise.allSettled([
+      PlatformService.overview(),
+      PropertySubscriptionService.byWorkspaceReport({ per_page: 1 }),
+    ]).then(([oRes, rRes]) => {
+      let newStats = { total: 0, active: 0, expired: 0, unsubscribed: 0, properties: 0, payments: 0, collected: 0 };
+      let newWorkspaces = [];
+
+      if (oRes.status === 'fulfilled' && oRes.value?.success) {
+        const d = oRes.value.data;
+        newStats.total = d.summary?.total_workspaces ?? 0;
+        newWorkspaces = d.recent_workspaces ?? [];
+      }
+
+      if (rRes.status === 'fulfilled' && rRes.value?.data?.totals) {
+        const t = rRes.value.data.totals;
+        newStats.active = t.active_subscribed_properties ?? 0;
+        newStats.expired = t.expired_properties ?? 0;
+        newStats.unsubscribed = t.unsubscribed_properties ?? 0;
+        newStats.properties = t.total_properties ?? 0;
+        newStats.payments = t.payments_count ?? 0;
+        newStats.collected = t.total_collected_amount_cents ?? 0;
+      }
+
+      _cache.data = { stats: newStats, workspaces: newWorkspaces };
+      _cache.ts = Date.now();
+      setStats(newStats);
+      setWorkspaces(newWorkspaces);
       setLoading(false);
     });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const today = useMemo(
-    () => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(new Date()),
-    []
+    () => new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }).format(now),
+    [now]
   );
+
 
   return (
     <div className="space-y-7">
@@ -108,7 +708,7 @@ export default function DashboardPage() {
             Welcome back, {user?.name?.split(' ')[0] || user?.username || 'Admin'}
           </h1>
           <p className="text-orange-100 text-sm mt-1">
-            {loading ? '…' : fmt(stats.total)} workspaces · {loading ? '…' : fmt(stats.active)} active
+            {loading ? '…' : fmt(stats.total)} workspaces · {loading ? '…' : fmt(stats.properties)} properties
           </p>
         </div>
         <div className="flex gap-2 shrink-0 flex-wrap">
@@ -127,24 +727,459 @@ export default function DashboardPage() {
       <div>
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Platform Overview</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-          <StatCard id="total" label="Total Workspaces" value={stats.total} loading={loading} href="/workspaces"
+          <StatCard id="total" label="Workspaces" value={stats.total} loading={loading} href="/workspaces"
             icon="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5"
             color="#ea580c" bg="#fff7ed" />
-          <StatCard id="active" label="Active" value={stats.active} loading={loading} href="/workspaces?status=active"
+          <StatCard id="properties" label="Properties" value={stats.properties} loading={loading} href="/reports/property-subscriptions/by-workspace"
+            icon="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"
+            color="#2563eb" bg="#dbeafe" />
+          <StatCard id="active" label="Active Subscribed" value={stats.active} loading={loading} href="/reports/property-subscriptions/by-workspace"
             icon="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
             color="#16a34a" bg="#f0fdf4" />
-          <StatCard id="suspended" label="Suspended" value={stats.suspended} loading={loading} href="/workspaces?status=suspended"
-            icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+          <StatCard id="expired" label="Expired" value={stats.expired} loading={loading} href="/reports/property-subscriptions/by-workspace"
+            icon="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             color="#dc2626" bg="#fef2f2" />
-          <StatCard id="failed" label="Prov. Failed" value={stats.failed} loading={loading} href="/workspaces?provisioning_status=failed"
-            icon="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-            color="#d97706" bg="#fffbeb" />
-          <StatCard id="billing" label="Billing Profiles" value={stats.billing} loading={loading} href="/billing"
-            icon="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
-            color="#0891b2" bg="#ecfeff" />
-          <StatCard id="billingActive" label="Active Profiles" value={stats.billingActive} loading={loading} href="/billing?status=active"
-            icon="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"
-            color="#7c3aed" bg="#f5f3ff" />
+          <StatCard id="unsubscribed" label="Unsubscribed" value={stats.unsubscribed} loading={loading} href="/reports/property-subscriptions/by-workspace"
+            icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+            color="#6b7280" bg="#f3f4f6" />
+          <StatCard id="payments" label="Payments Collected" value={stats.collected} formatter={(c) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((c || 0) / 100)} loading={loading} href="/reports/property-subscriptions/by-workspace"
+            icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            color="#9333ea" bg="#f5f3ff" />
+        </div>
+      </div>
+
+      {/* ── Analytics Charts Grid ── */}
+      <div>
+        <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Analytics</p>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Revenue Trend */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Revenue Trend</h3>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {revenueGeneratedAt && (
+                  <span className="text-[10px] text-gray-400 hidden sm:inline">
+                    {new Date(revenueGeneratedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                )}
+                {revenuePeriod === 'month' && (
+                  <>
+                    <RevenueControlSelect
+                      value={monthState.month}
+                      onChange={handleMonthMonthChange}
+                      options={MONTH_OPTIONS}
+                      ariaLabel="Select revenue month"
+                    />
+                    <RevenueControlSelect
+                      value={monthState.year}
+                      onChange={handleMonthYearChange}
+                      options={yearOptions}
+                      ariaLabel="Select revenue year"
+                    />
+                  </>
+                )}
+                {revenuePeriod === 'year' && (
+                  <RevenueControlSelect
+                    value={yearState.year}
+                    onChange={handleYearYearChange}
+                    options={yearOptions}
+                    ariaLabel="Select revenue year"
+                  />
+                )}
+                <PeriodSwitcher value={revenuePeriod} onChange={handleRevenuePeriodChange} />
+              </div>
+            </div>
+
+            {revenuePeriod === 'custom' && (
+              <div className="flex gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">From</label>
+                  <input
+                    type="date"
+                    value={customState.startDate}
+                    onChange={handleCustomStartChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">To</label>
+                  <input
+                    type="date"
+                    value={customState.endDate}
+                    onChange={handleCustomEndChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">Bucket</label>
+                  <RevenueControlSelect
+                    value={customState.bucketBy}
+                    onChange={handleCustomBucketChange}
+                    options={[
+                      { value: 'day', label: 'Day' },
+                      { value: 'week', label: 'Week' },
+                      { value: 'month', label: 'Month' },
+                    ]}
+                    ariaLabel="Select custom revenue bucket"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(revenueRangeLabel || revenueBucketLabel) && (
+              <p className="text-[11px] text-gray-500 mb-2">
+                {[revenueRangeLabel, revenueBucketLabel].filter(Boolean).join(' • ')}
+              </p>
+            )}
+
+            <SimpleBarChart
+              data={revenueSeries}
+              dataKey="total_collected_amount_cents"
+              xKey="label"
+              color="#ea580c"
+              loading={revenueLoading}
+              tooltipFormatter={revenueTooltipFormatter}
+              yTickFormatter={revenueYAxisTickFormatter}
+              xAxisLabel={revenueXAxisLabel}
+              yAxisLabel={revenueYAxisLabel}
+              emptyText="No revenue data for selected period"
+            />
+
+            {!revenueLoading && revenueSeries.length > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1.5 text-right">
+                Total <span className="font-semibold text-gray-800">{fmtCents(revenueSummary.total_collected_amount_cents)}</span>
+              </p>
+            )}
+          </div>
+
+          {/* Property Growth Trend */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Property Growth</h3>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {growthGeneratedAt && (
+                  <span className="text-[10px] text-gray-400 hidden sm:inline">
+                    {new Date(growthGeneratedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                )}
+                {growthPeriod === 'month' && (
+                  <>
+                    <RevenueControlSelect
+                      value={growthMonthState.month}
+                      onChange={handleGrowthMonthMonthChange}
+                      options={MONTH_OPTIONS}
+                      ariaLabel="Select growth month"
+                    />
+                    <RevenueControlSelect
+                      value={growthMonthState.year}
+                      onChange={handleGrowthMonthYearChange}
+                      options={yearOptions}
+                      ariaLabel="Select growth year"
+                    />
+                  </>
+                )}
+                {growthPeriod === 'year' && (
+                  <RevenueControlSelect
+                    value={growthYearState.year}
+                    onChange={handleGrowthYearYearChange}
+                    options={yearOptions}
+                    ariaLabel="Select growth year"
+                  />
+                )}
+                <PeriodSwitcher value={growthPeriod} onChange={handleGrowthPeriodChange} />
+              </div>
+            </div>
+
+            {growthPeriod === 'custom' && (
+              <div className="flex gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">From</label>
+                  <input
+                    type="date"
+                    value={growthCustomState.startDate}
+                    onChange={handleGrowthCustomStartChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">To</label>
+                  <input
+                    type="date"
+                    value={growthCustomState.endDate}
+                    onChange={handleGrowthCustomEndChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">Bucket</label>
+                  <RevenueControlSelect
+                    value={growthCustomState.bucketBy}
+                    onChange={handleGrowthCustomBucketChange}
+                    options={[
+                      { value: 'day', label: 'Day' },
+                      { value: 'week', label: 'Week' },
+                      { value: 'month', label: 'Month' },
+                    ]}
+                    ariaLabel="Select custom growth bucket"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(growthRangeLabel || growthBucketLabel) && (
+              <p className="text-[11px] text-gray-500 mb-2">
+                {[growthRangeLabel, growthBucketLabel].filter(Boolean).join(' • ')}
+              </p>
+            )}
+
+            <DualAxisChart
+              data={growthSeries}
+              barKey="new_properties"
+              lineKey="cumulative_total_properties"
+              xKey="label"
+              barColor="#2563eb"
+              lineColor="#16a34a"
+              loading={growthLoading}
+              tooltipFormatter={(value, name) => [fmt(value || 0), name === 'new_properties' ? 'New' : 'Cumulative']}
+              yTickFormatter={growthYAxisTickFormatter}
+              lineTickFormatter={growthYAxisTickFormatter}
+              xAxisLabel={growthXAxisLabel}
+              yAxisLabel={growthYAxisLabel}
+              lineAxisLabel={growthLineAxisLabel}
+              emptyText="No property growth data for selected period"
+            />
+
+            {!growthLoading && growthSeries.length > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1.5 text-right">
+                <span className="font-semibold text-gray-800">{fmt(growthSummary.new_properties || 0)}</span> new ·{' '}
+                <span className="font-semibold text-gray-800">{fmt(growthSummary.ending_cumulative_total_properties || 0)}</span> total
+              </p>
+            )}
+          </div>
+
+          {/* Subscription Status Trend */}
+          <div className="lg:col-span-2">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Subscription Status Trend</h3>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {statusGeneratedAt && (
+                  <span className="text-[10px] text-gray-400 hidden sm:inline">
+                    {new Date(statusGeneratedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                )}
+                {statusPeriod === 'month' && (
+                  <>
+                    <RevenueControlSelect
+                      value={statusMonthState.month}
+                      onChange={handleStatusMonthMonthChange}
+                      options={MONTH_OPTIONS}
+                      ariaLabel="Select status month"
+                    />
+                    <RevenueControlSelect
+                      value={statusMonthState.year}
+                      onChange={handleStatusMonthYearChange}
+                      options={yearOptions}
+                      ariaLabel="Select status year"
+                    />
+                  </>
+                )}
+                {statusPeriod === 'year' && (
+                  <RevenueControlSelect
+                    value={statusYearState.year}
+                    onChange={handleStatusYearYearChange}
+                    options={yearOptions}
+                    ariaLabel="Select status year"
+                  />
+                )}
+                <PeriodSwitcher value={statusPeriod} onChange={handleStatusPeriodChange} />
+              </div>
+            </div>
+
+            {statusPeriod === 'custom' && (
+              <div className="flex gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">From</label>
+                  <input
+                    type="date"
+                    value={statusCustomState.startDate}
+                    onChange={handleStatusCustomStartChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">To</label>
+                  <input
+                    type="date"
+                    value={statusCustomState.endDate}
+                    onChange={handleStatusCustomEndChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">Bucket</label>
+                  <RevenueControlSelect
+                    value={statusCustomState.bucketBy}
+                    onChange={handleStatusCustomBucketChange}
+                    options={[
+                      { value: 'day', label: 'Day' },
+                      { value: 'week', label: 'Week' },
+                      { value: 'month', label: 'Month' },
+                    ]}
+                    ariaLabel="Select custom status bucket"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(statusRangeLabel || statusBucketLabel) && (
+              <p className="text-[11px] text-gray-500 mb-2">
+                {[statusRangeLabel, statusBucketLabel].filter(Boolean).join(' • ')}
+              </p>
+            )}
+
+            <StackedBarChart
+              data={statusSeries}
+              loading={statusLoading}
+              keys={['active_subscribed_properties', 'expired_properties', 'unsubscribed_properties']}
+            />
+
+            {!statusLoading && statusSeries.length > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1.5 text-right">
+                <span className="font-semibold text-green-600">{fmt(statusSummary.active_subscribed_properties || 0)}</span> active ·{' '}
+                <span className="font-semibold text-red-600">{fmt(statusSummary.expired_properties || 0)}</span> expired ·{' '}
+                <span className="font-semibold text-gray-600">{fmt(statusSummary.unsubscribed_properties || 0)}</span> unsubscribed
+              </p>
+            )}
+          </div>
+
+          {/* Subscription Status Split */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Subscription Status Split</h3>
+              {splitGeneratedAt && (
+                <span className="text-[10px] text-gray-400 hidden sm:inline">
+                  {new Date(splitGeneratedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                </span>
+              )}
+            </div>
+
+            {/* Spacer to align chart top with billing rules label row */}
+            <p className="text-[11px] text-gray-500 mb-2 invisible">&nbsp;</p>
+
+            <DonutChart
+              data={splitSeries}
+              loading={splitLoading}
+              innerLabel="Total"
+              innerValue={splitSummary.total_properties}
+            />
+
+            {!splitLoading && splitSeries.length > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1.5 text-right">
+                <span className="font-semibold text-green-600">{fmt(splitSummary.active_subscribed_properties || 0)}</span> active ·{' '}
+                <span className="font-semibold text-red-600">{fmt(splitSummary.expired_properties || 0)}</span> expired ·{' '}
+                <span className="font-semibold text-gray-600">{fmt(splitSummary.unsubscribed_properties || 0)}</span> unsubscribed
+              </p>
+            )}
+          </div>
+
+          {/* Top Billing Rules */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-800">Top Billing Rules</h3>
+              <div className="flex items-center gap-2 flex-wrap justify-end">
+                {billingGeneratedAt && (
+                  <span className="text-[10px] text-gray-400 hidden sm:inline">
+                    {new Date(billingGeneratedAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', hour12: false })}
+                  </span>
+                )}
+                {billingPeriod === 'month' && (
+                  <>
+                    <RevenueControlSelect
+                      value={billingMonthState.month}
+                      onChange={handleBillingMonthMonthChange}
+                      options={MONTH_OPTIONS}
+                      ariaLabel="Select billing month"
+                    />
+                    <RevenueControlSelect
+                      value={billingMonthState.year}
+                      onChange={handleBillingMonthYearChange}
+                      options={yearOptions}
+                      ariaLabel="Select billing year"
+                    />
+                  </>
+                )}
+                {billingPeriod === 'year' && (
+                  <RevenueControlSelect
+                    value={billingYearState.year}
+                    onChange={handleBillingYearYearChange}
+                    options={yearOptions}
+                    ariaLabel="Select billing year"
+                  />
+                )}
+                <PeriodSwitcher value={billingPeriod} onChange={handleBillingPeriodChange} />
+              </div>
+            </div>
+
+            {billingPeriod === 'custom' && (
+              <div className="flex gap-3 mb-2 flex-wrap">
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">From</label>
+                  <input
+                    type="date"
+                    value={billingCustomState.startDate}
+                    onChange={handleBillingCustomStartChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">To</label>
+                  <input
+                    type="date"
+                    value={billingCustomState.endDate}
+                    onChange={handleBillingCustomEndChange}
+                    className="text-[11px] border border-gray-200 rounded-lg px-2 py-1 focus:outline-none focus:ring-2 focus:ring-primary-500"
+                  />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <label className="text-[11px] text-gray-500 font-medium">Bucket</label>
+                  <RevenueControlSelect
+                    value={billingCustomState.bucketBy}
+                    onChange={handleBillingCustomBucketChange}
+                    options={[
+                      { value: 'day', label: 'Day' },
+                      { value: 'week', label: 'Week' },
+                      { value: 'month', label: 'Month' },
+                    ]}
+                    ariaLabel="Select custom billing bucket"
+                  />
+                </div>
+              </div>
+            )}
+
+            {(billingRangeLabel || billingBucketLabel) && (
+              <p className="text-[11px] text-gray-500 mb-2">
+                {[billingRangeLabel, billingBucketLabel].filter(Boolean).join(' • ')}
+              </p>
+            )}
+
+            <HorizontalBarChart
+              data={billingSeries}
+              xKey="total_collected_amount_cents"
+              yKey="label"
+              color="#ea580c"
+              loading={billingLoading}
+              tooltipFormatter={billingTooltipFormatter}
+              xTickFormatter={billingXTickFormatter}
+              emptyText="No billing rules data for selected period"
+            />
+
+            {!billingLoading && billingSeries.length > 0 && (
+              <p className="text-[11px] text-gray-500 mt-1.5 text-right">
+                <span className="font-semibold text-gray-800">{billingSummary.billing_rules_count || 0}</span> rules ·{' '}
+                <span className="font-semibold text-gray-800">{fmtCents(billingSummary.total_collected_amount_cents || 0)}</span> total
+              </p>
+            )}
+          </div>
         </div>
       </div>
 

@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import PropertySubscriptionService from '@/services/PropertySubscriptionService';
 import Link from 'next/link';
 import { Skel, StatCard } from '@/components/ui';
-import { fmt, fmtCents, fmtDateTime } from '@/lib/formatters';
+import { fmt, fmtDateTime, fmtCents } from '@/lib/formatters';
 import useUiStore from '@/store/uiStore';
 
 export default function ByWorkspaceReportPage() {
@@ -88,7 +88,7 @@ export default function ByWorkspaceReportPage() {
                 <th className="text-center">Expired</th>
                 <th className="text-center">Unsubscribed</th>
                 <th className="text-center">Payments</th>
-                <th className="text-right">Collected (TZS)</th>
+                <th className="text-right">Collected</th>
                 <th>Created</th>
                 <th>Updated</th>
                 <th className="text-center">Actions</th>
@@ -124,7 +124,9 @@ export default function ByWorkspaceReportPage() {
                   <td className="text-center text-sm text-red-600 font-medium">{fmt(r.expired_properties)}</td>
                   <td className="text-center text-sm text-gray-500">{fmt(r.unsubscribed_properties)}</td>
                   <td className="text-center text-sm text-gray-700">{fmt(r.payments_count)}</td>
-                  <td className="text-sm font-medium text-gray-900 text-right">{fmtCents(r.total_collected_amount_cents)}</td>
+                  <td className="text-sm font-medium text-gray-900 text-right">
+                    {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((r.total_collected_amount_cents || 0) / 100)}
+                  </td>
                   <td className="text-xs text-gray-500">{fmtDateTime(r.created_at ?? r.createdAt)}</td>
                   <td className="text-xs text-gray-500">{fmtDateTime(r.updated_at ?? r.updatedAt)}</td>
                   <td className="text-center">

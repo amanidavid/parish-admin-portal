@@ -19,34 +19,45 @@ async function handler(request, context) {
   };
 
   const upstreamUrl = `${LARAVEL_ADMIN_API_V1_BASE}/${path}${qs ? '?' + qs : ''}`;
+  // eslint-disable-next-line no-console
+  console.log('[BFF] Proxying to:', upstreamUrl);
 
   let body = undefined;
   if (!['GET', 'HEAD'].includes(request.method)) {
     body = await request.text();
   }
 
-  const upstream = await fetch(upstreamUrl, {
-    method: request.method,
-    headers,
-    body,
-    cache: 'no-store',
-  });
-
-  let data;
-  const text = await upstream.text();
   try {
-    data = JSON.parse(text);
-  } catch {
-    data = { success: false, message: `Upstream error ${upstream.status}` };
+    const upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers,
+      body,
+      cache: 'no-store',
+    });
+
+    let data;
+    const text = await upstream.text();
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { success: false, message: `Upstream error ${upstream.status}` };
+    }
+
+    const response = NextResponse.json(data, { status: upstream.status });
+
+    if (upstream.status === 401) {
+      response.cookies.delete(ADMIN_TOKEN_KEY);
+    }
+
+    return response;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error('[BFF] Upstream fetch failed:', err.message);
+    return NextResponse.json(
+      { success: false, message: `Proxy error: ${err.message}`, upstreamUrl },
+      { status: 502 }
+    );
   }
-
-  const response = NextResponse.json(data, { status: upstream.status });
-
-  if (upstream.status === 401) {
-    response.cookies.delete(ADMIN_TOKEN_KEY);
-  }
-
-  return response;
 }
 
 export const GET = handler;

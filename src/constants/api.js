@@ -14,6 +14,7 @@ export const PROPERTY_SUBSCRIPTION_PATH = `${ADMIN_API_BASE}/tenants`; // tenant
 export const PROPERTY_SUBSCRIPTION_PAYMENT_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for payments
 export const REPORTS_PATH = `${ADMIN_API_BASE}/reports`;
 export const AUTOMATION_TASKS_PATH = `${ADMIN_API_BASE}/automation/tasks`;
+export const ANALYTICS_PATH = `${ADMIN_API_BASE}/analytics`;
 
 // BFF auth routes (Next.js internal)
 export const ADMIN_LOGIN_ROUTE = '/api/admin/auth/login';

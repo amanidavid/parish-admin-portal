@@ -13,11 +13,13 @@
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "recharts": "^3.8.1",
     "tailwindcss": "^3.4.19",
     "use-debounce": "^10.1.1",
     "zustand": "^5.0.13"
   },
   "devDependencies": {
+    "@types/recharts": "^1.8.29",
     "autoprefixer": "^10.5.0",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
