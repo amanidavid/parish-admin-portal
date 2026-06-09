@@ -12,6 +12,8 @@ function normalizeLaravelOrigin(value) {
 }
 
 const laravelOrigin = normalizeLaravelOrigin(process.env.LARAVEL_API_URL);
+console.log('[laravelApi] LARAVEL_API_URL:', process.env.LARAVEL_API_URL);
+console.log('[laravelApi] laravelOrigin:', laravelOrigin);
 
 export const LARAVEL_ORIGIN = laravelOrigin;
 export const LARAVEL_API_V1_BASE = `${laravelOrigin}${API_V1_PREFIX}`;
