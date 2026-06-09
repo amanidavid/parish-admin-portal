@@ -753,7 +753,7 @@ export default function DashboardPage() {
         <p className="text-xs font-semibold text-gray-400 uppercase tracking-widest mb-3">Analytics</p>
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           {/* Revenue Trend */}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800">Revenue Trend</h3>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -853,7 +853,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Property Growth Trend */}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800">Property Growth</h3>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -958,7 +958,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Subscription Status Trend */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 min-w-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800">Subscription Status Trend</h3>
               <div className="flex items-center gap-2 flex-wrap justify-end">
@@ -1053,7 +1053,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Subscription Status Split */}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800">Subscription Status Split</h3>
               {splitGeneratedAt && (
@@ -1083,7 +1083,7 @@ export default function DashboardPage() {
           </div>
 
           {/* Top Billing Rules */}
-          <div>
+          <div className="min-w-0">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800">Top Billing Rules</h3>
               <div className="flex items-center gap-2 flex-wrap justify-end">
