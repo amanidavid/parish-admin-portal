@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import AutomationService from '@/services/AutomationService';
 import { Skel, Badge } from '@/components/ui';
 import { fmtDate } from '@/lib/formatters';
