@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import AutomationService from '@/services/AutomationService';
 import { Skel, Badge } from '@/components/ui';
 import { fmtDate } from '@/lib/formatters';
@@ -7,9 +7,11 @@ import useUiStore from '@/store/uiStore';
 
 const SCHEDULE_MAP = {
   interval: { label: 'Interval', color: '#2563eb', bg: '#dbeafe' },
+  daily: { label: 'Daily', color: '#0891b2', bg: '#cffafe' },
   cron: { label: 'Cron', color: '#7c3aed', bg: '#ede9fe' },
   manual: { label: 'Manual', color: '#6b7280', bg: '#f3f4f6' },
 };
+
 
 const ENABLED_MAP = {
   true: { label: 'Enabled', color: '#16a34a', bg: '#dcfce7' },
@@ -82,7 +84,7 @@ export default function AutomationTasksPage() {
                 <th>Task</th>
                 <th>Status</th>
                 <th>Schedule</th>
-                <th>Interval / Cron</th>
+                <th>Interval / Cron / Time</th>
                 <th>Last Run</th>
                 <th>Next Run</th>
                 <th>Created</th>
@@ -117,14 +119,17 @@ export default function AutomationTasksPage() {
                       </div>
                       <div>
                         <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
-                        <p className="text-xs text-gray-400 font-mono">{t.uuid?.slice(0, 8)}</p>
+                        <p className="text-xs text-gray-400 font-mono">{t.task_key || t.uuid?.slice(0, 8)}</p>
                       </div>
                     </div>
                   </td>
                   <td><Badge map={ENABLED_MAP} value={String(t.enabled)} /></td>
                   <td><Badge map={SCHEDULE_MAP} value={t.schedule_mode} /></td>
                   <td className="text-sm text-gray-700">
-                    {t.schedule_mode === 'interval' ? `${t.interval_minutes} min` : t.cron_expression || '—'}
+                    {t.schedule_mode === 'interval' && `${t.interval_minutes} min`}
+                    {t.schedule_mode === 'daily' && t.run_at_time}
+                    {t.schedule_mode === 'cron' && (t.cron_expression || '—')}
+                    {t.schedule_mode === 'manual' && '—'}
                   </td>
                   <td className="text-xs text-gray-500">{fmtDate(t.last_run_at)}</td>
                   <td className="text-xs text-gray-500">{fmtDate(t.next_run_at)}</td>
@@ -157,58 +162,165 @@ export default function AutomationTasksPage() {
   );
 }
 
+/* ─── Edit Modal ─── */
 function EditModal({ task, onClose, onSave }) {
-  const [data, setData] = useState({
-    enabled: task.enabled,
-    schedule_mode: task.schedule_mode || 'interval',
-    interval_minutes: task.interval_minutes || 30,
-    timezone: task.timezone || 'Africa/Nairobi',
-    cron_expression: task.cron_expression || '',
+  const [data, setData] = useState(() => {
+    const schedule = task.schedule_mode || 'interval';
+    return {
+      enabled: task.enabled ?? true,
+      schedule_mode: schedule,
+      interval_minutes: task.interval_minutes || 5,
+      run_at_time: task.run_at_time || '00:00',
+      timezone: task.timezone || 'Africa/Nairobi',
+      cron_expression: task.cron_expression || '',
+    };
   });
+
+  const mode = data.schedule_mode;
+
+  const handleSaveClick = () => {
+    const payload = { enabled: data.enabled, schedule_mode: mode };
+    if (mode === 'interval') {
+      payload.interval_minutes = data.interval_minutes;
+      payload.timezone = data.timezone;
+    }
+    if (mode === 'daily') {
+      payload.run_at_time = data.run_at_time;
+      payload.timezone = data.timezone;
+    }
+    if (mode === 'cron') {
+      payload.cron_expression = data.cron_expression;
+      payload.timezone = data.timezone;
+    }
+    onSave(task.uuid, payload);
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] overflow-y-auto">
         <div className="p-5 border-b border-gray-100 flex items-center justify-between">
-          <h3 className="text-lg font-bold text-gray-900">Edit Task</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg></button>
+          <div>
+            <h3 className="text-lg font-bold text-gray-900">Edit Task</h3>
+            <p className="text-xs text-gray-400 mt-0.5">{task.name}</p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600">
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
         </div>
+
         <div className="p-5 space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Schedule Mode</label>
-            <select value={data.schedule_mode} onChange={(e) => setData((p) => ({ ...p, schedule_mode: e.target.value }))} className="input w-full text-sm py-2">
-              <option value="interval">Interval</option>
-              <option value="cron">Cron</option>
-              <option value="manual">Manual</option>
-            </select>
+          {/* Enabled */}
+          <div className="flex items-center gap-2 p-3 rounded-lg border border-gray-100 bg-gray-50">
+            <input
+              type="checkbox"
+              id="enabled"
+              checked={data.enabled}
+              onChange={(e) => setData((p) => ({ ...p, enabled: e.target.checked }))}
+              className="w-4 h-4 rounded border-gray-300 text-orange-600"
+            />
+            <label htmlFor="enabled" className="text-sm font-medium text-gray-700">
+              Task is {data.enabled ? 'enabled' : 'disabled'}
+            </label>
           </div>
-          {data.schedule_mode === 'interval' && (
+
+          {/* Schedule Mode */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Schedule Mode</label>
+            <div className="grid grid-cols-4 gap-2">
+              {[
+                { value: 'interval', label: 'Interval' },
+                { value: 'daily', label: 'Daily' },
+                { value: 'cron', label: 'Cron' },
+                { value: 'manual', label: 'Manual' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setData((p) => ({ ...p, schedule_mode: opt.value }))}
+                  className={`px-2 py-2 rounded-lg text-xs font-medium border transition-all ${mode === opt.value
+                    ? 'border-orange-300 bg-orange-50 text-orange-700'
+                    : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
+                    }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Interval */}
+          {mode === 'interval' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Interval (minutes)</label>
-              <input type="number" min={1} value={data.interval_minutes} onChange={(e) => setData((p) => ({ ...p, interval_minutes: parseInt(e.target.value, 10) }))} className="input w-full text-sm py-2" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Interval (minutes)</label>
+              <input
+                type="number"
+                min={1}
+                value={data.interval_minutes}
+                onChange={(e) => setData((p) => ({ ...p, interval_minutes: parseInt(e.target.value, 10) || 1 }))}
+                className="input w-full text-sm py-2"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Runs every N minutes. Example: 5 = every 5 minutes.</p>
             </div>
           )}
-          {data.schedule_mode === 'cron' && (
+
+          {/* Daily time */}
+          {mode === 'daily' && (
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Cron Expression</label>
-              <input type="text" value={data.cron_expression} onChange={(e) => setData((p) => ({ ...p, cron_expression: e.target.value }))} className="input w-full text-sm py-2" placeholder="0 2 * * *" />
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Run At Time</label>
+              <input
+                type="time"
+                value={data.run_at_time}
+                onChange={(e) => setData((p) => ({ ...p, run_at_time: e.target.value }))}
+                className="input w-full text-sm py-2"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Daily run time in 24-hour format. Example: 00:00 = midnight.</p>
             </div>
           )}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">Timezone</label>
-            <input type="text" value={data.timezone} onChange={(e) => setData((p) => ({ ...p, timezone: e.target.value }))} className="input w-full text-sm py-2" />
-          </div>
-          <div className="flex items-center gap-2">
-            <input type="checkbox" id="enabled" checked={data.enabled} onChange={(e) => setData((p) => ({ ...p, enabled: e.target.checked }))} className="w-4 h-4 rounded border-gray-300 text-orange-600" />
-            <label htmlFor="enabled" className="text-sm text-gray-700">Enabled</label>
-          </div>
+
+          {/* Cron */}
+          {mode === 'cron' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Cron Expression</label>
+              <input
+                type="text"
+                value={data.cron_expression}
+                onChange={(e) => setData((p) => ({ ...p, cron_expression: e.target.value }))}
+                className="input w-full text-sm py-2"
+                placeholder="0 2 * * *"
+              />
+              <p className="text-[11px] text-gray-400 mt-1">Standard cron format. Example: 0 2 * * * = 2:00 AM daily.</p>
+            </div>
+          )}
+
+          {/* Timezone (shared) */}
+          {mode !== 'manual' && (
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1.5">Timezone</label>
+              <input
+                type="text"
+                value={data.timezone}
+                onChange={(e) => setData((p) => ({ ...p, timezone: e.target.value }))}
+                className="input w-full text-sm py-2"
+              />
+            </div>
+          )}
         </div>
+
         <div className="p-5 border-t border-gray-100 flex gap-3">
-          <button onClick={() => onSave(task.uuid, data)}
+          <button
+            onClick={handleSaveClick}
             className="flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90"
-            style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}>Save</button>
-          <button onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">Cancel</button>
+            style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}
+          >
+            Save Changes
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 rounded-xl text-sm font-semibold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+          >
+            Cancel
+          </button>
         </div>
       </div>
     </div>
