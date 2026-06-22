@@ -20,3 +20,6 @@ export const ANALYTICS_PATH = `${ADMIN_API_BASE}/analytics`;
 export const ADMIN_LOGIN_ROUTE = '/api/admin/auth/login';
 export const ADMIN_LOGOUT_ROUTE = '/api/admin/auth/logout';
 export const ADMIN_ME_ROUTE = '/api/admin/auth/me';
+export const ADMIN_FORGOT_PASSWORD_ROUTE = '/api/admin/auth/forgot-password';
+export const APP_AUTH_FORGOT_PASSWORD_ROUTE = '/api/app/auth/forgot-password';
+export const APP_AUTH_RESET_PASSWORD_ROUTE = '/api/app/auth/reset-password';

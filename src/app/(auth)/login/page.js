@@ -163,6 +163,9 @@ export default function AdminLoginPage() {
             />
             <span className="text-sm text-gray-600">Remember me</span>
           </label>
+          <a href="/forgot-password" className="text-sm font-medium text-primary-600 hover:text-primary-700 transition-colors">
+            Forgot password?
+          </a>
         </div>
 
         <button
