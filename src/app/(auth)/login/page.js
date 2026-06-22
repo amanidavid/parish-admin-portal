@@ -25,6 +25,7 @@ export default function AdminLoginPage() {
   const [error, setError] = useState(null);
   const [fieldErrors, setFieldErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
 
   const handleChange = useCallback((e) => {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
@@ -67,29 +68,28 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div>
+    <div className="animate-fade-in-up">
       <div className="mb-8">
-        <div className="inline-flex items-center gap-2 bg-primary-50 border border-primary-200 rounded-full px-3 py-1 mb-4">
-          <span className="w-2 h-2 rounded-full bg-primary-500"></span>
-          <span className="text-primary-700 text-xs font-semibold tracking-wide">ADMIN ACCESS</span>
+        <div className="mb-5">
+          <h1 className="text-lg font-bold text-gray-900 tracking-tight">ZABA</h1>
+          <p className="text-xs text-gray-400 uppercase tracking-widest mt-0.5">Administrator Portal</p>
         </div>
-        <h2 className="text-3xl font-bold text-gray-900">Sign in to Admin</h2>
-        <p className="text-gray-500 mt-1 text-sm">Enter your administrator credentials to continue</p>
+        <h2 className="text-2xl font-bold text-gray-900">Sign in to continue</h2>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {sessionExpired && (
-          <div className="flex items-start gap-3 rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
-            <svg className="w-5 h-5 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-start gap-3 rounded-lg bg-amber-50 border border-amber-200 px-4 py-3">
+            <svg className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
             </svg>
-            <p className="text-sm text-amber-700 font-medium">Your session has expired. Please sign in again.</p>
+            <p className="text-sm text-amber-700">Your session has expired. Please sign in again.</p>
           </div>
         )}
 
         {error && (
-          <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
-            <svg className="w-5 h-5 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-start gap-3 rounded-lg bg-red-50 border border-red-200 px-4 py-3">
+            <svg className="w-4 h-4 text-red-500 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
             <p className="text-sm text-red-700">{error}</p>
@@ -97,7 +97,7 @@ export default function AdminLoginPage() {
         )}
 
         {fieldErrors?.auth && (
-          <div className="flex items-start gap-3 rounded-xl bg-red-50 border border-red-200 px-4 py-3">
+          <div className="rounded-lg bg-red-50 border border-red-200 px-4 py-3">
             <p className="text-sm text-red-700">{fieldErrors.auth[0]}</p>
           </div>
         )}
@@ -153,18 +153,30 @@ export default function AdminLoginPage() {
           {fieldErrors?.password && <p className="mt-1 text-xs text-red-600">{fieldErrors.password[0]}</p>}
         </div>
 
+        <div className="flex items-center justify-between">
+          <label className="flex items-center gap-2 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={rememberMe}
+              onChange={(e) => setRememberMe(e.target.checked)}
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-gray-600">Remember me</span>
+          </label>
+        </div>
+
         <button
           type="submit"
-          className="w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 text-sm font-semibold text-white transition-all mt-2"
-          style={{ background: loading ? '#fb923c' : 'linear-gradient(135deg, #ea580c, #c2410c)' }}
+          className={`w-full flex items-center justify-center gap-2 rounded-xl py-3 px-4 text-sm font-semibold text-white transition-all mt-2 ${loading ? 'opacity-90 cursor-not-allowed' : 'hover:opacity-90'}`}
+          style={{ background: 'linear-gradient(135deg, #ea580c, #c2410c)' }}
           disabled={loading}
         >
-          {loading ? <><Spinner /> Authenticating...</> : 'Sign in to Admin Portal'}
+          {loading ? <><Spinner /> Signing in...</> : 'Sign In'}
         </button>
       </form>
 
-      <p className="mt-8 text-center text-xs text-gray-400">
-        Restricted access — authorised administrators only
+      <p className="mt-8 text-center text-xs text-gray-400 tracking-wide">
+        Authorized personnel only
       </p>
     </div>
   );
