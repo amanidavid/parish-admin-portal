@@ -1,23 +1,115 @@
 'use client';
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import AutomationService from '@/services/AutomationService';
 import { Skel, Badge } from '@/components/ui';
-import { fmtDate } from '@/lib/formatters';
+import { fmtDate, fmtDateTime } from '@/lib/formatters';
 import useUiStore from '@/store/uiStore';
 
+/**
+ * NOTE: Backend supports "interval", "daily", and "manual" for schedule_mode.
+ * "cron" is NOT supported — do not add it to the edit modal.
+ */
 const SCHEDULE_MAP = {
   interval: { label: 'Interval', color: '#2563eb', bg: '#dbeafe' },
   daily: { label: 'Daily', color: '#0891b2', bg: '#cffafe' },
-  cron: { label: 'Cron', color: '#7c3aed', bg: '#ede9fe' },
   manual: { label: 'Manual', color: '#6b7280', bg: '#f3f4f6' },
 };
-
 
 const ENABLED_MAP = {
   true: { label: 'Enabled', color: '#16a34a', bg: '#dcfce7' },
   false: { label: 'Disabled', color: '#dc2626', bg: '#fee2e2' },
 };
 
+const STATUS_MAP = {
+  success: { label: 'Success', color: '#16a34a', bg: '#dcfce7' },
+  failed: { label: 'Failed', color: '#dc2626', bg: '#fee2e2' },
+  pending: { label: 'Pending', color: '#ca8a04', bg: '#fef9c3' },
+  running: { label: 'Running', color: '#2563eb', bg: '#dbeafe' },
+};
+
+/* ─── Schedule value renderer ─── */
+function ScheduleValue({ mode, interval, runAt }) {
+  if (mode === 'interval') return <span className="text-sm text-gray-700">{interval ?? '—'} min</span>;
+  if (mode === 'daily') return <span className="text-sm text-gray-700">{runAt ?? '—'}</span>;
+  return <span className="text-sm text-gray-400">—</span>;
+}
+
+/* ─── Memoised table row ─── */
+const TaskRow = memo(function TaskRow({ task, onToggle, onRun, onEdit }) {
+  const supportsRunNow = task.meta?.supports_run_now ?? true;
+
+  return (
+    <tr className="hover:bg-gray-50/50 transition-colors">
+      <td>
+        <div className="flex items-center gap-3">
+          <div
+            className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
+            style={{ background: 'linear-gradient(135deg,#2563eb,#3b82f6)' }}
+          >
+            {(task.name || 'T').charAt(0).toUpperCase()}
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-gray-900 text-sm truncate">{task.name}</p>
+            {task.description && (
+              <p className="text-xs text-gray-400 truncate max-w-[220px]" title={task.description}>
+                {task.description}
+              </p>
+            )}
+          </div>
+        </div>
+      </td>
+      <td><Badge map={ENABLED_MAP} value={String(task.enabled)} /></td>
+      <td><Badge map={SCHEDULE_MAP} value={task.schedule_mode} /></td>
+      <td>
+        <ScheduleValue
+          mode={task.schedule_mode}
+          interval={task.interval_minutes}
+          runAt={task.run_at_time}
+        />
+      </td>
+      <td className="text-xs text-gray-500">{fmtDateTime(task.last_run_at)}</td>
+      <td className="text-xs text-gray-500">{fmtDateTime(task.next_run_at)}</td>
+      <td>
+        <Badge map={STATUS_MAP} value={task.last_status || 'pending'} />
+        {task.last_message && (
+          <p className="text-[11px] text-gray-400 mt-1 max-w-[180px] truncate" title={task.last_message}>
+            {task.last_message}
+          </p>
+        )}
+      </td>
+      <td className="text-right">
+        <div className="flex items-center justify-end gap-2">
+          {supportsRunNow && (
+            <button
+              onClick={() => onRun(task)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 transition-colors"
+              title="Run Now"
+            >
+              Run
+            </button>
+          )}
+          <button
+            onClick={() => onEdit(task)}
+            className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors"
+          >
+            Edit
+          </button>
+          <button
+            onClick={() => onToggle(task)}
+            className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${task.enabled
+              ? 'text-red-700 bg-red-50 hover:bg-red-100'
+              : 'text-green-700 bg-green-50 hover:bg-green-100'
+              }`}
+          >
+            {task.enabled ? 'Disable' : 'Enable'}
+          </button>
+        </div>
+      </td>
+    </tr>
+  );
+});
+
+/* ─── Main page ─── */
 export default function AutomationTasksPage() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -69,6 +161,9 @@ export default function AutomationTasksPage() {
     }
   }, [load, showNotification]);
 
+  /* Memoised list so rows only re-render when tasks actually change */
+  const taskList = useMemo(() => tasks, [tasks]);
+
   return (
     <div className="space-y-6">
       <div>
@@ -78,77 +173,47 @@ export default function AutomationTasksPage() {
 
       <div className="data-table-wrap">
         <div className="overflow-x-auto">
-          <table className="data-table min-w-[800px]">
+          <table className="data-table min-w-[900px]">
             <thead>
               <tr>
                 <th>Task</th>
                 <th>Status</th>
                 <th>Schedule</th>
-                <th>Interval / Cron / Time</th>
+                <th>Value</th>
                 <th>Last Run</th>
                 <th>Next Run</th>
-                <th>Created</th>
-                <th>Updated</th>
+                <th>Last Status</th>
                 <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {loading && Array.from({ length: 5 }, (_, i) => (
                 <tr key={i}>
-                  <td><Skel w="w-32" h="h-3.5" /></td>
+                  <td><Skel w="w-40" h="h-3.5" /></td>
                   <td><Skel w="w-14" h="h-5" /></td>
                   <td><Skel w="w-12" h="h-5" /></td>
                   <td><Skel w="w-16" h="h-3" /></td>
                   <td><Skel w="w-20" h="h-3" /></td>
                   <td><Skel w="w-20" h="h-3" /></td>
-                  <td><Skel w="w-20" h="h-3" /></td>
-                  <td><Skel w="w-20" h="h-3" /></td>
+                  <td><Skel w="w-20" h="h-5" /></td>
                   <td className="text-right"><Skel w="w-24" h="h-7" /></td>
                 </tr>
               ))}
-              {!loading && tasks.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-14 text-gray-400 text-sm">No automation tasks found</td></tr>
-              )}
-              {!loading && tasks.map((t) => (
-                <tr key={t.uuid}>
-                  <td>
-                    <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl flex items-center justify-center text-white text-sm font-bold shrink-0"
-                        style={{ background: 'linear-gradient(135deg,#2563eb,#3b82f6)' }}>
-                        {(t.name || 'T').charAt(0).toUpperCase()}
-                      </div>
-                      <div>
-                        <p className="font-semibold text-gray-900 text-sm">{t.name}</p>
-                        <p className="text-xs text-gray-400 font-mono">{t.task_key || t.uuid?.slice(0, 8)}</p>
-                      </div>
-                    </div>
-                  </td>
-                  <td><Badge map={ENABLED_MAP} value={String(t.enabled)} /></td>
-                  <td><Badge map={SCHEDULE_MAP} value={t.schedule_mode} /></td>
-                  <td className="text-sm text-gray-700">
-                    {t.schedule_mode === 'interval' && `${t.interval_minutes} min`}
-                    {t.schedule_mode === 'daily' && t.run_at_time}
-                    {t.schedule_mode === 'cron' && (t.cron_expression || '—')}
-                    {t.schedule_mode === 'manual' && '—'}
-                  </td>
-                  <td className="text-xs text-gray-500">{fmtDate(t.last_run_at)}</td>
-                  <td className="text-xs text-gray-500">{fmtDate(t.next_run_at)}</td>
-                  <td className="text-xs text-gray-500">{fmtDate(t.created_at ?? t.createdAt)}</td>
-                  <td className="text-xs text-gray-500">{fmtDate(t.updated_at ?? t.updatedAt)}</td>
-                  <td className="text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <button onClick={() => handleRunNow(t)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-white bg-blue-500 hover:bg-blue-600 transition-colors"
-                        title="Run Now">Run</button>
-                      <button onClick={() => setEditing(t)}
-                        className="px-2.5 py-1.5 rounded-lg text-xs font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">Edit</button>
-                      <button onClick={() => handleToggle(t)}
-                        className={`px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${t.enabled ? 'text-red-700 bg-red-50 hover:bg-red-100' : 'text-green-700 bg-green-50 hover:bg-green-100'}`}>
-                        {t.enabled ? 'Disable' : 'Enable'}
-                      </button>
-                    </div>
+              {!loading && taskList.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="text-center py-14 text-gray-400 text-sm">
+                    No automation tasks found
                   </td>
                 </tr>
+              )}
+              {!loading && taskList.map((t) => (
+                <TaskRow
+                  key={t.uuid}
+                  task={t}
+                  onToggle={handleToggle}
+                  onRun={handleRunNow}
+                  onEdit={setEditing}
+                />
               ))}
             </tbody>
           </table>
@@ -169,31 +234,34 @@ function EditModal({ task, onClose, onSave }) {
     return {
       enabled: task.enabled ?? true,
       schedule_mode: schedule,
-      interval_minutes: task.interval_minutes || 5,
-      run_at_time: task.run_at_time || '00:00',
+      interval_minutes: task.interval_minutes || 15,
+      run_at_time: task.run_at_time || '09:00',
       timezone: task.timezone || 'Africa/Nairobi',
-      cron_expression: task.cron_expression || '',
     };
   });
 
   const mode = data.schedule_mode;
 
-  const handleSaveClick = () => {
-    const payload = { enabled: data.enabled, schedule_mode: mode };
+  const handleSaveClick = useCallback(() => {
+    const payload = {
+      enabled: data.enabled,
+      schedule_mode: mode,
+      timezone: data.timezone,
+    };
     if (mode === 'interval') {
       payload.interval_minutes = data.interval_minutes;
-      payload.timezone = data.timezone;
+      payload.run_at_time = null;
     }
     if (mode === 'daily') {
       payload.run_at_time = data.run_at_time;
-      payload.timezone = data.timezone;
+      payload.interval_minutes = null;
     }
-    if (mode === 'cron') {
-      payload.cron_expression = data.cron_expression;
-      payload.timezone = data.timezone;
+    if (mode === 'manual') {
+      payload.interval_minutes = null;
+      payload.run_at_time = null;
     }
     onSave(task.uuid, payload);
-  };
+  }, [data, mode, task.uuid, onSave]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
@@ -218,7 +286,7 @@ function EditModal({ task, onClose, onSave }) {
               id="enabled"
               checked={data.enabled}
               onChange={(e) => setData((p) => ({ ...p, enabled: e.target.checked }))}
-              className="w-4 h-4 rounded border-gray-300 text-orange-600"
+              className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
             />
             <label htmlFor="enabled" className="text-sm font-medium text-gray-700">
               Task is {data.enabled ? 'enabled' : 'disabled'}
@@ -228,18 +296,18 @@ function EditModal({ task, onClose, onSave }) {
           {/* Schedule Mode */}
           <div>
             <label className="block text-sm font-medium text-gray-700 mb-1.5">Schedule Mode</label>
-            <div className="grid grid-cols-4 gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {[
                 { value: 'interval', label: 'Interval' },
                 { value: 'daily', label: 'Daily' },
-                { value: 'cron', label: 'Cron' },
                 { value: 'manual', label: 'Manual' },
               ].map((opt) => (
                 <button
                   key={opt.value}
+                  type="button"
                   onClick={() => setData((p) => ({ ...p, schedule_mode: opt.value }))}
                   className={`px-2 py-2 rounded-lg text-xs font-medium border transition-all ${mode === opt.value
-                    ? 'border-orange-300 bg-orange-50 text-orange-700'
+                    ? 'border-primary-300 bg-primary-50 text-primary-700'
                     : 'border-gray-200 text-gray-600 hover:border-gray-300 hover:bg-gray-50'
                     }`}
                 >
@@ -260,7 +328,7 @@ function EditModal({ task, onClose, onSave }) {
                 onChange={(e) => setData((p) => ({ ...p, interval_minutes: parseInt(e.target.value, 10) || 1 }))}
                 className="input w-full text-sm py-2"
               />
-              <p className="text-[11px] text-gray-400 mt-1">Runs every N minutes. Example: 5 = every 5 minutes.</p>
+              <p className="text-[11px] text-gray-400 mt-1">Runs every N minutes. Minimum 1 minute.</p>
             </div>
           )}
 
@@ -274,37 +342,21 @@ function EditModal({ task, onClose, onSave }) {
                 onChange={(e) => setData((p) => ({ ...p, run_at_time: e.target.value }))}
                 className="input w-full text-sm py-2"
               />
-              <p className="text-[11px] text-gray-400 mt-1">Daily run time in 24-hour format. Example: 00:00 = midnight.</p>
+              <p className="text-[11px] text-gray-400 mt-1">Daily run time in 24-hour format.</p>
             </div>
           )}
 
-          {/* Cron */}
-          {mode === 'cron' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Cron Expression</label>
-              <input
-                type="text"
-                value={data.cron_expression}
-                onChange={(e) => setData((p) => ({ ...p, cron_expression: e.target.value }))}
-                className="input w-full text-sm py-2"
-                placeholder="0 2 * * *"
-              />
-              <p className="text-[11px] text-gray-400 mt-1">Standard cron format. Example: 0 2 * * * = 2:00 AM daily.</p>
-            </div>
-          )}
-
-          {/* Timezone (shared) */}
-          {mode !== 'manual' && (
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Timezone</label>
-              <input
-                type="text"
-                value={data.timezone}
-                onChange={(e) => setData((p) => ({ ...p, timezone: e.target.value }))}
-                className="input w-full text-sm py-2"
-              />
-            </div>
-          )}
+          {/* Timezone */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1.5">Timezone</label>
+            <input
+              type="text"
+              value={data.timezone}
+              onChange={(e) => setData((p) => ({ ...p, timezone: e.target.value }))}
+              className="input w-full text-sm py-2"
+            />
+            <p className="text-[11px] text-gray-400 mt-1">Example: Africa/Nairobi</p>
+          </div>
         </div>
 
         <div className="p-5 border-t border-gray-100 flex gap-3">
