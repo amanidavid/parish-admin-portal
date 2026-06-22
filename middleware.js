@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { ADMIN_TOKEN_KEY } from '@/constants/cookies';
 
-const PUBLIC_PATHS = ['/login'];
+const PUBLIC_PATHS = ['/login', '/forgot-password', '/reset-password'];
 
 export function middleware(request) {
   const { pathname } = request.nextUrl;
