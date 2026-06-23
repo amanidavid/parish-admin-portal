@@ -121,38 +121,17 @@ export default function PropertySubscriptionDetailPage() {
         )}
       </div>
 
-      {/* Payment summary cards */}
-      {!loading && (summary?.active_payment || summary?.latest_payment) && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {summary.active_payment && (
-            <div className="bg-green-50 rounded-lg p-4 border border-green-100">
-              <p className="text-xs text-green-600 font-medium mb-1">Active Payment</p>
-              <p className="text-base font-bold text-gray-900">{fmtCents(summary.active_payment.total_amount_cents, summary.active_payment.currency)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{fmtDate(summary.active_payment.payment_date)}</p>
-              <p className="text-xs text-gray-400">Coverage: {fmtDate(summary.active_payment.coverage_starts_on)} – {fmtDate(summary.active_payment.coverage_ends_on)}</p>
-            </div>
-          )}
-          {summary.latest_payment && (
-            <div className="bg-orange-50 rounded-lg p-4 border border-orange-100">
-              <p className="text-xs text-orange-600 font-medium mb-1">Latest Payment</p>
-              <p className="text-base font-bold text-gray-900">{fmtCents(summary.latest_payment.total_amount_cents, summary.latest_payment.currency)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">{fmtDate(summary.latest_payment.payment_date)}</p>
-              <p className="text-xs text-gray-400">Coverage: {fmtDate(summary.latest_payment.coverage_starts_on)} – {fmtDate(summary.latest_payment.coverage_ends_on)}</p>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Summary stats */}
-      {!loading && (
-        <div className="grid grid-cols-2 gap-4">
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
-            <p className="text-xs text-gray-500">Total Payments</p>
-            <p className="text-xl font-bold text-gray-900">{fmt(summary?.payments_count ?? 0)}</p>
-          </div>
-          <div className="bg-white rounded-xl border border-gray-200 p-4 text-center">
+      {/* Payment summary */}
+      {!loading && summary && (
+        <div className="flex items-center gap-6">
+          <div>
             <p className="text-xs text-gray-500">Total Paid</p>
-            <p className="text-xl font-bold text-gray-900">{fmtCents(summary?.total_paid_amount_cents ?? 0)}</p>
+            <p className="text-lg font-bold text-gray-900">{fmtCents(summary.total_paid_amount_cents ?? 0)}</p>
+          </div>
+          <div className="w-px h-8 bg-gray-200" />
+          <div>
+            <p className="text-xs text-gray-500">Payments</p>
+            <p className="text-lg font-bold text-gray-900">{fmt(summary.payments_count ?? 0)}</p>
           </div>
         </div>
       )}
@@ -186,7 +165,6 @@ export default function PropertySubscriptionDetailPage() {
                     <th>Months</th>
                     <th>Monthly Price</th>
                     <th>Total</th>
-                    <th>Reference</th>
                     <th>Coverage Period</th>
                   </tr>
                 </thead>
@@ -197,7 +175,6 @@ export default function PropertySubscriptionDetailPage() {
                       <td className="text-center text-sm text-gray-700">{fmt(p.months_paid)}</td>
                       <td className="text-sm text-gray-700">{fmtCents(p.monthly_price_cents)}</td>
                       <td className="text-sm font-medium text-gray-900">{fmtCents(p.total_amount_cents)}</td>
-                      <td className="text-xs text-gray-500">{p.reference_number || '—'}</td>
                       <td className="text-xs text-gray-500">{fmtDate(p.coverage_starts_on)} – {fmtDate(p.coverage_ends_on)}</td>
                     </tr>
                   ))}

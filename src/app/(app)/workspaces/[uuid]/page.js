@@ -1,7 +1,7 @@
 // ─── Workspace Detail — Tabbed View ──────────────────────────────────────────
 'use client';
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import WorkspaceService from '@/services/WorkspaceService';
 import { Skel, Badge, OccBar, ConfirmModal } from '@/components/ui';
@@ -9,12 +9,18 @@ import { fmt, fmtAmt, pct, fmtDate, fmtCents } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP, ACCESS_CFG, CT_COLORS, SUB_STATUS_MAP } from '@/constants/status';
 import useUiStore from '@/store/uiStore';
 
+const PROP_SUB_STATUS_MAP = {
+  active: { label: 'Active', cls: 'badge-green' },
+  expired: { label: 'Expired', cls: 'badge-red' },
+  unsubscribed: { label: 'Unsubscribed', cls: 'badge-gray' },
+};
+
 const TAB_DEFS = [
   { key: 'operational', label: 'Operational View', icon: 'M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z' },
   { key: 'contracts', label: 'Contracts', icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z' },
   { key: 'properties', label: 'Properties', icon: 'M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4' },
   { key: 'location', label: 'Location', icon: 'M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z' },
-  { key: 'subscription', label: 'Subscription', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z' },
+  { key: 'subscription', label: 'Subscription', icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', always: true },
 ];
 
 // ─── Tab Skeleton ─────────────────────────────────────────────────────────────
@@ -156,50 +162,39 @@ function ContractsTab({ data }) {
 // ─── Tab: Properties (self-contained) ────────────────────────────────────────
 function PropertiesTab({ uuid }) {
   const [rows, setRows] = useState([]);
-  const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusF, setStatusF] = useState('');
-  const [page, setPage] = useState(1);
   const debRef = useRef(null);
   const initRef = useRef(false);
 
-  const loadProps = useCallback(async (q, st, pg) => {
+  const loadProps = useCallback(async (q, st) => {
     setLoading(true);
-    const res = await WorkspaceService.properties(uuid, {
-      per_page: 10,
-      page: pg,
+    const res = await WorkspaceService.subscriptionProperties(uuid, {
       ...(q ? { search: q } : {}),
-      ...(st ? { status: st } : {}),
+      ...(st ? { subscription_status: st } : {}),
     });
-    setRows(res?.data?.data ?? res?.data ?? []);
-    setMeta(res?.data?.meta ?? res?.meta ?? null);
+    setRows(Array.isArray(res?.data) ? res.data : []);
     setLoading(false);
   }, [uuid]);
 
   useEffect(() => {
-    if (!initRef.current) { initRef.current = true; loadProps('', '', 1); }
+    if (!initRef.current) { initRef.current = true; loadProps('', ''); }
   }, [loadProps]);
 
   const handleSearch = useCallback((e) => {
     const val = e.target.value; setSearch(val);
     clearTimeout(debRef.current);
-    debRef.current = setTimeout(() => { setPage(1); loadProps(val, statusF, 1); }, 350);
+    debRef.current = setTimeout(() => { loadProps(val, statusF); }, 350);
   }, [statusF, loadProps]);
   const handleStatus = useCallback((e) => {
-    const val = e.target.value; setStatusF(val); setPage(1); loadProps(search, val, 1);
+    const val = e.target.value; setStatusF(val); loadProps(search, val);
   }, [search, loadProps]);
-  const handlePage = useCallback((pg) => { setPage(pg); loadProps(search, statusF, pg); }, [search, statusF, loadProps]);
-  const pageNums = useMemo(() => {
-    if (!meta || meta.last_page <= 1) return [];
-    const start = Math.max(1, Math.min(meta.last_page - 4, page - 2));
-    return Array.from({ length: Math.min(5, meta.last_page) }, (_, i) => start + i);
-  }, [meta, page]);
 
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
-        <p className="text-xs text-gray-400">{meta ? `${fmt(meta.total)} properties` : 'Loading…'}</p>
+        <p className="text-xs text-gray-400">{!loading ? `${fmt(rows.length)} properties` : 'Loading…'}</p>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400">
@@ -212,28 +207,32 @@ function PropertiesTab({ uuid }) {
           <select value={statusF} onChange={handleStatus} className="input py-1.5 text-xs w-32">
             <option value="">All Status</option>
             <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
+            <option value="expired">Expired</option>
+            <option value="unsubscribed">Unsubscribed</option>
           </select>
         </div>
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Property</th><th>Location</th><th className="text-center">Floors</th><th>Units</th><th className="text-center">Contracts</th><th>Created</th><th>Status</th></tr></thead>
+          <thead><tr><th>Property</th><th className="text-center">Units</th><th>Matched Rule</th><th>Price</th><th>Created</th><th>Status</th></tr></thead>
           <tbody>
             {loading && Array.from({ length: 4 }, (_, i) => (
               <tr key={i}>
-                <td><Skel w="w-32" h="h-3.5" /></td><td><Skel w="w-24" h="h-3" /></td>
-                <td><Skel w="w-8" h="h-3" /></td><td><Skel w="w-28" h="h-3" /></td>
-                <td><Skel w="w-10" h="h-3" /></td><td><Skel w="w-16" h="h-3" /></td><td><Skel w="w-14" h="h-5" /></td>
+                <td><Skel w="w-32" h="h-3.5" /></td>
+                <td className="text-center"><Skel w="w-8" h="h-3" /></td>
+                <td><Skel w="w-28" h="h-3" /></td>
+                <td><Skel w="w-20" h="h-3" /></td>
+                <td><Skel w="w-16" h="h-3" /></td>
+                <td><Skel w="w-14" h="h-5" /></td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
+              <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
             )}
             {!loading && rows.map((p) => {
-              const loc = [p.district_name, p.region_name, p.country_name].filter(Boolean).join(', ');
+              const rule = p.matched_rule;
               return (
-                <tr key={p.property_uuid ?? p.uuid}>
+                <tr key={p.property_uuid}>
                   <td>
                     <div className="flex items-center gap-2.5">
                       <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
@@ -242,43 +241,18 @@ function PropertiesTab({ uuid }) {
                       <span className="font-medium text-gray-900 text-sm">{p.name}</span>
                     </div>
                   </td>
-                  <td className="text-xs text-gray-500 max-w-[160px] truncate">{loc || '—'}</td>
-                  <td className="text-center text-sm font-medium text-gray-700">{fmt(p.floors_count)}</td>
-                  <td>
-                    <div className="min-w-[100px]">
-                      <div className="flex items-center justify-between text-xs mb-1">
-                        <span className="text-gray-900 font-medium">{fmt(p.occupied_units)}/{fmt(p.units_count)}</span>
-                        <span className="text-gray-400">{p.vacant_units} vacant</span>
-                      </div>
-                      <OccBar occupied={p.occupied_units} total={p.units_count} />
-                    </div>
+                  <td className="text-center text-sm text-gray-700">{fmt(p.registered_units)}</td>
+                  <td className="text-xs text-gray-600">
+                    {rule ? `${rule.range_start}-${rule.range_end ?? '∞'} units @ ${fmtCents(rule.price_cents, rule.currency)}` : '—'}
                   </td>
-                  <td className="text-center">
-                    <div className="text-sm font-semibold text-gray-900">{fmt(p.active_contracts_count)}</div>
-                    <div className="text-[10px] text-gray-400">{fmt(p.contracts_count)} total</div>
-                  </td>
-                  <td className="text-xs text-gray-500">{fmtDate(p.created_at ?? p.createdAt)}</td>
-                  <td><Badge map={WORKSPACE_STATUS_MAP} value={p.status} /></td>
+                  <td className="text-sm font-medium text-gray-900">{fmtCents(p.estimated_price_cents, rule?.currency)}</td>
+                  <td className="text-xs text-gray-500">{fmtDate(p.created_at)}</td>
+                  <td><Badge map={PROP_SUB_STATUS_MAP} value={p.subscription_status} /></td>
                 </tr>
               );
             })}
           </tbody>
         </table>
-        {pageNums.length > 0 && (
-          <div className="flex items-center justify-between px-5 py-3 border-t border-gray-100 bg-white">
-            <p className="text-xs text-gray-400">Showing {meta.from}–{meta.to} of {fmt(meta.total)}</p>
-            <div className="flex items-center gap-1">
-              <button onClick={() => handlePage(Math.max(1, page - 1))} disabled={page === 1}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">← Prev</button>
-              {pageNums.map((pg) => (
-                <button key={pg} onClick={() => handlePage(pg)}
-                  className={`w-8 h-8 rounded-lg text-xs font-medium transition-colors ${pg === page ? 'bg-primary-600 text-white' : 'text-gray-600 border border-gray-200 hover:bg-gray-50'}`}>{pg}</button>
-              ))}
-              <button onClick={() => handlePage(Math.min(meta.last_page, page + 1))} disabled={page === meta.last_page}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium text-gray-600 border border-gray-200 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">Next →</button>
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
@@ -345,105 +319,44 @@ function LocationTab({ data }) {
 }
 
 // ─── Tab: Subscription ────────────────────────────────────────────────────────
-function SubscriptionTab({ data, uuid }) {
-  const sub = data.subscription;
-  const usage = data.usage;
-  const plan = sub?.plan;
-  const bp = sub?.billing_profile;
-  const pending = sub?.pending_billing_profile_change;
+function SubscriptionTab({ uuid }) {
+  const items = [
+    {
+      label: 'Usage Adjustments',
+      desc: 'Modify tenant usage limits and allocations',
+      href: `/workspaces/${uuid}/usage-adjustments`,
+      icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
+    },
+    {
+      label: 'Property Subscriptions',
+      desc: 'View and manage per-property billing',
+      href: `/workspaces/${uuid}/property-subscriptions`,
+      icon: 'M9 7h6m0 3.666V3m-6 3.666V3m0 7.334V21m6-10.666V21m0-3.666a3 3 0 11-6 0 3 3 0 016 0z',
+    },
+  ];
 
   return (
-    <div className="space-y-5">
-      {/* Plan card */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <div className="lg:col-span-2 space-y-5">
-          <div className="info-card">
-            <div className="info-card-header"><span className="info-card-title">Subscription</span></div>
-            <div className="info-card-body">
-              {plan && (
-                <>
-                  <div className="info-card-row"><span className="info-card-label">Plan</span><span className="info-card-value">{plan.name}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Interval</span><span className="info-card-value capitalize">{plan.billing_interval}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Base Price</span><span className="info-card-value">{fmtCents(plan.price_cents, plan.currency || bp?.currency)}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Price / Property</span><span className="info-card-value">{fmtCents(plan.price_per_property_cents, plan.currency || bp?.currency)}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Properties Included</span><span className="info-card-value">{plan.properties_included}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Trial Days</span><span className="info-card-value">{plan.trial_days}</span></div>
-                </>
-              )}
-              <div className="info-card-row"><span className="info-card-label">Status</span><span className="info-card-value"><Badge map={SUB_STATUS_MAP} value={sub?.status} /></span></div>
-              <div className="info-card-row"><span className="info-card-label">Effective Status</span><span className="info-card-value capitalize">{sub?.effective_status}</span></div>
-              <div className="info-card-row"><span className="info-card-label">Current Period</span><span className="info-card-value">{fmtDate(sub?.current_period_starts_at)} → {fmtDate(sub?.current_period_ends_at)}</span></div>
-              <div className="info-card-row"><span className="info-card-label">Trial Ends</span><span className="info-card-value">{fmtDate(sub?.trial_ends_at)}</span></div>
-              <div className="info-card-row"><span className="info-card-label">Subscription Ends</span><span className="info-card-value">{fmtDate(sub?.ends_at)}</span></div>
-            </div>
+    <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
+      {items.map((item) => (
+        <Link
+          key={item.label}
+          href={item.href}
+          className="group flex items-center gap-4 px-6 py-5 hover:bg-gray-50 transition-colors"
+        >
+          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 group-hover:bg-gray-200 transition-colors">
+            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
+            </svg>
           </div>
-
-          {pending && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-800">Pending Billing Profile Change</p>
-              <p className="text-xs text-amber-700 mt-1">
-                From <strong>{pending.old_billing_profile?.name}</strong> to <strong>{pending.new_billing_profile?.name}</strong>
-                {' · '}Effective {fmtDate(pending.effective_at)}
-                {' · '}Change: {fmtCents(pending.new_price_cents - pending.current_price_cents, pending.old_billing_profile?.currency)}
-              </p>
-            </div>
-          )}
-        </div>
-
-        <div className="space-y-5">
-          <div className="info-card">
-            <div className="info-card-header"><span className="info-card-title">Actions</span></div>
-            <div className="p-3 space-y-2">
-              <Link href={`/workspaces/${uuid}/billing`}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
-                </svg>
-                Change Billing Profile
-              </Link>
-              <Link href={`/workspaces/${uuid}/usage-adjustments`}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                Usage Adjustments
-              </Link>
-              <Link href={`/workspaces/${uuid}/property-subscriptions`}
-                className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 3.666V3m-6 3.666V3m0 7.334V21m6-10.666V21m0-3.666a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Property Subscriptions
-              </Link>
-            </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-gray-900">{item.label}</p>
+            <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
           </div>
-
-          <div className="info-card">
-            <div className="info-card-header"><span className="info-card-title">Usage</span></div>
-            <div className="info-card-body">
-              <div className="info-card-row"><span className="info-card-label">Properties</span><span className="info-card-value text-lg font-black">{fmt(usage?.registered_properties)}</span></div>
-              <div className="info-card-row"><span className="info-card-label">Units</span><span className="info-card-value text-lg font-black">{fmt(usage?.registered_units_total)}</span></div>
-              <div className="info-card-row"><span className="info-card-label">Estimated Total</span><span className="info-card-value text-lg font-black text-primary-600">{fmtCents(usage?.estimated_total_price_cents, bp?.currency)}</span></div>
-            </div>
-          </div>
-
-          <div className="info-card">
-            <div className="info-card-header"><span className="info-card-title">Billing Profile</span></div>
-            <div className="info-card-body">
-              {bp ? (
-                <>
-                  <div className="info-card-row"><span className="info-card-label">Name</span><span className="info-card-value">{bp.name}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Interval</span><span className="info-card-value capitalize">{bp.billing_interval}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Currency</span><span className="info-card-value font-mono">{bp.currency}</span></div>
-                  <div className="info-card-row"><span className="info-card-label">Trial / Grace</span><span className="info-card-value">{bp.trial_days}d / {bp.grace_days}d</span></div>
-                </>
-              ) : (
-                <p className="text-sm text-gray-400 py-2">No billing profile assigned</p>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+          <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+          </svg>
+        </Link>
+      ))}
     </div>
   );
 }
@@ -561,10 +474,14 @@ export default function WorkspaceDetailPage() {
   const { uuid } = useParams();
   const [workspace, setWorkspace] = useState(null);
   const [pageLoading, setPageLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('operational');
-  const [tabData, setTabData] = useState({ operational: null, contracts: null, location: null, subscription: null });
-  const [tabStatus, setTabStatus] = useState({ operational: 'loading', contracts: 'idle', properties: 'idle', location: 'idle', subscription: 'idle' });
-  const fetchedRef = useRef(new Set(['operational']));
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const urlTab = searchParams.get('tab');
+  const validUrlTab = TAB_DEFS.find((t) => t.key === urlTab)?.key;
+  const [activeTab, setActiveTab] = useState(validUrlTab || 'operational');
+  const [tabData, setTabData] = useState({ operational: null, contracts: null, location: null });
+  const [tabStatus, setTabStatus] = useState({ operational: 'loading', contracts: 'idle', properties: 'idle', location: 'idle' });
+  const fetchedRef = useRef(new Set(['operational', 'subscription']));
 
   const loadOperational = useCallback(async () => {
     const res = await WorkspaceService.operationalSummary(uuid);
@@ -595,11 +512,6 @@ export default function WorkspaceDetailPage() {
         setTabStatus((prev) => ({ ...prev, location: d ? 'loaded' : 'empty' }));
       } else if (key === 'properties') {
         setTabStatus((prev) => ({ ...prev, properties: 'loaded' }));
-      } else if (key === 'subscription') {
-        const res = await WorkspaceService.subscription(uuid);
-        const d = res?.data ?? null;
-        setTabData((prev) => ({ ...prev, subscription: d }));
-        setTabStatus((prev) => ({ ...prev, subscription: d ? 'loaded' : 'empty' }));
       }
     } catch {
       setTabStatus((prev) => ({ ...prev, [key]: 'empty' }));
@@ -607,20 +519,24 @@ export default function WorkspaceDetailPage() {
   }, [uuid]);
 
   const handleTabSelect = useCallback((key) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('tab', key);
+    router.replace(`/workspaces/${uuid}?${params.toString()}`, { scroll: false });
     setActiveTab(key);
     if (!fetchedRef.current.has(key)) fetchTabData(key);
-  }, [fetchTabData]);
+  }, [fetchTabData, router, searchParams, uuid]);
 
   const availableTabs = useMemo(
-    () => TAB_DEFS.filter((t) => tabStatus[t.key] !== 'empty'),
+    () => TAB_DEFS.filter((t) => t.always || tabStatus[t.key] !== 'empty'),
     [tabStatus]
   );
 
   useEffect(() => {
-    if (availableTabs.length > 0 && !availableTabs.find((t) => t.key === activeTab)) {
-      setActiveTab(availableTabs[0].key);
+    const t = searchParams.get('tab');
+    if (t && TAB_DEFS.find((d) => d.key === t)) {
+      setActiveTab(t);
     }
-  }, [availableTabs, activeTab]);
+  }, [searchParams]);
 
   if (pageLoading) {
     return (
@@ -723,7 +639,7 @@ export default function WorkspaceDetailPage() {
         {activeTab === 'contracts' && (tabStatus.contracts === 'loading' ? <TabSkeleton /> : tabData.contracts ? <ContractsTab data={tabData.contracts} /> : null)}
         {activeTab === 'properties' && <PropertiesTab uuid={uuid} />}
         {activeTab === 'location' && (tabStatus.location === 'loading' ? <TabSkeleton /> : tabData.location ? <LocationTab data={tabData.location} /> : null)}
-        {activeTab === 'subscription' && (tabStatus.subscription === 'loading' ? <TabSkeleton /> : tabData.subscription ? <SubscriptionTab data={tabData.subscription} uuid={uuid} /> : null)}
+        {activeTab === 'subscription' && <SubscriptionTab uuid={uuid} />}
       </div>
     </div>
   );

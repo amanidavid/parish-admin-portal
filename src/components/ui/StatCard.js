@@ -1,6 +1,7 @@
 'use client';
+import { memo } from 'react';
 
-export default function StatCard({ label, value, icon, color, bg, loading, href, children }) {
+const StatCard = memo(function StatCard({ label, value, icon, color, bg, loading, href, children }) {
   const inner = (
     <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4 flex items-center gap-3 min-h-[80px]">
       <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0" style={{ backgroundColor: bg }}>
@@ -18,4 +19,6 @@ export default function StatCard({ label, value, icon, color, bg, loading, href,
     </div>
   );
   return href ? <a href={href} className="block">{inner}</a> : inner;
-}
+});
+
+export default StatCard;

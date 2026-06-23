@@ -270,7 +270,7 @@ export default function DashboardPage() {
   }, []);
   const revenueTooltipFormatter = useCallback((value) => fmtCents(value), []);
   const revenueYAxisTickFormatter = useCallback(
-    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format((value || 0) / 100),
+    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0),
     []
   );
   const revenueXAxisLabel = useMemo(() => {
@@ -477,7 +477,7 @@ export default function DashboardPage() {
     return [value, name];
   }, []);
   const billingXTickFormatter = useCallback(
-    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format((value || 0) / 100),
+    (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value || 0),
     []
   );
 
@@ -742,7 +742,7 @@ export default function DashboardPage() {
           <StatCard id="unsubscribed" label="Unsubscribed" value={stats.unsubscribed} loading={loading} href="/reports/property-subscriptions/by-workspace"
             icon="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
             color="#6b7280" bg="#f3f4f6" />
-          <StatCard id="payments" label="Payments Collected" value={stats.collected} formatter={(c) => new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((c || 0) / 100)} loading={loading} href="/reports/property-subscriptions/by-workspace"
+          <StatCard id="payments" label="Payments Collected" value={stats.collected} formatter={(c) => new Intl.NumberFormat('en-US').format(c || 0)} loading={loading} href="/reports/property-subscriptions/by-workspace"
             icon="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
             color="#9333ea" bg="#f5f3ff" />
         </div>

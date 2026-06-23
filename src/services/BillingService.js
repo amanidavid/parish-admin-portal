@@ -1,25 +1,25 @@
 /**
- * BillingService — client-side BFF service for admin billing profile operations.
+ * BillingService — client-side BFF service for admin billing rules operations.
  *
- * All methods call the Next.js BFF proxy (/api/v1/admin/billing-profiles/*)
+ * All methods call the Next.js BFF proxy (/api/v1/admin/billing-rules/*)
  * which injects the admin_token cookie before forwarding to Laravel.
  */
 import apiFetch from '@/lib/apiFetch';
 import buildQuery from '@/lib/query';
-import { BILLING_PATH, BILLING_RULES_PATH } from '@/constants/api';
+import { BILLING_PATH } from '@/constants/api';
 
 const BillingService = {
   /**
-   * Paginated billing profiles list with optional filters.
+   * Paginated billing rules list with optional filters.
    *
-   * @param {{ search?, status?, billing_interval?, per_page?, page? }} filters
+   * @param {{ status?, effective_on?, registered_units?, per_page?, page? }} filters
    */
   index(filters = {}) {
     return apiFetch(`${BILLING_PATH}${buildQuery(filters)}`);
   },
 
   /**
-   * Single billing profile with rule count.
+   * Single billing rule.
    *
    * @param {string} uuid
    */
@@ -28,9 +28,9 @@ const BillingService = {
   },
 
   /**
-   * Create a new billing profile.
+   * Create a new billing rule.
    *
-   * @param {{ name, billing_interval, description?, trial_days?, grace_days?, currency?, is_default?, status? }} data
+   * @param {{ range_start, range_end?, price_cents, currency, effective_from, effective_to?, sort_order?, status? }} data
    */
   store(data) {
     return apiFetch(BILLING_PATH, {
@@ -41,7 +41,7 @@ const BillingService = {
   },
 
   /**
-   * Update an existing billing profile.
+   * Update an existing billing rule.
    *
    * @param {string} uuid
    * @param {object} data
@@ -52,56 +52,6 @@ const BillingService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
-  },
-
-  /**
-   * Paginated pricing rules for a billing profile.
-   *
-   * @param {string} profileUuid
-   * @param {{ status?, effective_on?, per_page?, page? }} filters
-   */
-  rules(profileUuid, filters = {}) {
-    return apiFetch(`${BILLING_PATH}/${profileUuid}/rules${buildQuery(filters)}`);
-  },
-
-  /**
-   * Add a new pricing rule to a billing profile.
-   *
-   * @param {string} profileUuid
-   * @param {{ range_start, price_cents, effective_from, range_end?, currency?, effective_to?, sort_order?, status? }} data
-   */
-  storeRule(profileUuid, data) {
-    return apiFetch(`${BILLING_PATH}/${profileUuid}/rules`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-  },
-
-  /**
-   * Update an existing billing rule.
-   *
-   * @param {string} ruleUuid
-   * @param {object} data
-   */
-  updateRule(ruleUuid, data, options = {}) {
-    return apiFetch(`${BILLING_RULES_PATH}/${ruleUuid}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-      ...options,
-    });
-  },
-
-  /**
-   * List billing rules directly (not via a profile).
-   * Useful for dropdowns where rules need to be filtered by status,
-   * effective date, and registered units.
-   *
-   * @param {{ status?, effective_on?, registered_units?, per_page?, page? }} filters
-   */
-  billingRules(filters = {}) {
-    return apiFetch(`${BILLING_RULES_PATH}${buildQuery(filters)}`);
   },
 };
 

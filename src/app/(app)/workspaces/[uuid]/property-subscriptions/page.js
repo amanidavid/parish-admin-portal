@@ -323,11 +323,10 @@ export default function PropertySubscriptionsPage() {
     abortRef.current = new AbortController();
     setLoading(true);
     try {
-      const today = new Date().toISOString().split('T')[0];
       const [subRes, wsRes, brRes] = await Promise.allSettled([
         PropertySubscriptionService.index(uuid, { per_page: 15, ...f }),
         WorkspaceService.show(uuid),
-        BillingService.billingRules({ status: 'active', effective_on: today, per_page: 50 }),
+        BillingService.index({ status: 'active', per_page: 50 }),
       ]);
       if (subRes.status === 'fulfilled' && subRes.value?.data) {
         setSubscriptions(Array.isArray(subRes.value.data) ? subRes.value.data : []);
@@ -436,10 +435,6 @@ export default function PropertySubscriptionsPage() {
                 <th className="text-center">Units</th>
                 <th>Subscription</th>
                 <th>Period End</th>
-                <th>Payments</th>
-                <th>Total Paid</th>
-                <th>Created</th>
-                <th>Updated</th>
                 <th className="text-center">Actions</th>
               </tr>
             </thead>
@@ -450,15 +445,11 @@ export default function PropertySubscriptionsPage() {
                   <td className="text-center"><Skel w="w-8" h="h-3" /></td>
                   <td><Skel w="w-14" h="h-5" /></td>
                   <td><Skel w="w-20" h="h-3" /></td>
-                  <td><Skel w="w-8" h="h-3" /></td>
-                  <td><Skel w="w-20" h="h-3" /></td>
-                  <td><Skel w="w-20" h="h-3" /></td>
-                  <td><Skel w="w-20" h="h-3" /></td>
                   <td className="text-center"><Skel w="w-16" h="h-7" /></td>
                 </tr>
               ))}
               {!loading && subscriptions.length === 0 && (
-                <tr><td colSpan={9} className="text-center py-14 text-gray-400 text-sm">No property subscriptions found</td></tr>
+                <tr><td colSpan={5} className="text-center py-14 text-gray-400 text-sm">No property subscriptions found</td></tr>
               )}
               {!loading && subscriptions.map((s, i) => (
                 <tr key={s.property_uuid || `sub-${i}`}>
@@ -480,10 +471,6 @@ export default function PropertySubscriptionsPage() {
                   <td className="text-xs text-gray-500">
                     {fmtDate(s.subscription?.current_period_ends_on) || '—'}
                   </td>
-                  <td className="text-sm text-gray-700">{fmt(s.payment_summary?.payments_count ?? 0)}</td>
-                  <td className="text-sm font-medium text-gray-900">{fmtCents(s.payment_summary?.total_paid_amount_cents ?? 0)}</td>
-                  <td className="text-xs text-gray-500">{fmtDate(s.created_at ?? s.createdAt)}</td>
-                  <td className="text-xs text-gray-500">{fmtDate(s.updated_at ?? s.updatedAt)}</td>
                   <td className="text-center">
                     <div className="flex items-center justify-center gap-2">
                       <Link href={`/workspaces/${uuid}/property-subscriptions/${s.property_uuid}`}

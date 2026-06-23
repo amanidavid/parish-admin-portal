@@ -10,7 +10,7 @@ export const fmtAmt = (n) => `TZS ${fmt(n)}`;
 export const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
 
 export const fmtCents = (c, cur) =>
-  `${cur || 'TZS'} ${new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((c || 0) / 100)}`;
+  `${cur || 'TZS'} ${new Intl.NumberFormat('en-US').format(c || 0)}`;
 
 export const fmtDate = (d) => {
   if (!d) return '—';

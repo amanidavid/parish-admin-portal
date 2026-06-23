@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import BillingService from '@/services/BillingService';
 import useUiStore from '@/store/uiStore';
-import { BILLING_CURRENCIES, BILLING_INTERVALS } from '@/constants/status';
+import { BILLING_CURRENCIES } from '@/constants/status';
 
 function Field({ label, name, children, hint, errors }) {
   return (
@@ -19,18 +19,18 @@ function Field({ label, name, children, hint, errors }) {
   );
 }
 
-export default function CreateBillingProfilePage() {
+export default function CreateBillingRulePage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
-    name: '',
-    description: '',
-    billing_interval: 'monthly',
-    trial_days: 14,
-    grace_days: 7,
+    range_start: 1,
+    range_end: '',
+    price_cents: 0,
     currency: 'TZS',
-    is_default: false,
+    effective_from: new Date().toISOString().split('T')[0],
+    effective_to: '',
+    sort_order: 0,
     status: 'active',
   });
 
@@ -44,10 +44,17 @@ export default function CreateBillingProfilePage() {
     setSaving(true);
     setErrors({});
     try {
-      const res = await BillingService.store(form);
+      const payload = {
+        ...form,
+        range_end: form.range_end === '' ? null : parseInt(form.range_end, 10),
+        price_cents: parseInt(form.price_cents, 10) || 0,
+        sort_order: parseInt(form.sort_order, 10) || 0,
+        effective_to: form.effective_to === '' ? null : form.effective_to,
+      };
+      const res = await BillingService.store(payload);
       if (res?.success && res?.data?.uuid) {
-        useUiStore.getState().showNotification('Billing profile created');
-        router.push(`/billing/${res.data.uuid}`);
+        useUiStore.getState().showNotification('Billing rule created');
+        router.push(`/billing/${res.data.uuid}/edit`);
       } else if (res?.errors) {
         setErrors(res.errors);
         useUiStore.getState().showNotification('Please fix the errors below', 'error');
@@ -68,35 +75,34 @@ export default function CreateBillingProfilePage() {
         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
         </svg>
-        Back to Billing Profiles
+        Back to Billing Rules
       </Link>
 
-      <div className="card p-6">
-        <h1 className="text-xl font-bold text-gray-900 mb-1">Create Billing Profile</h1>
-        <p className="text-sm text-gray-400 mb-6">Set up a reusable pricing plan that can be assigned to workspaces.</p>
+      <div className="card p-6 max-w-2xl">
+        <h1 className="text-xl font-bold text-gray-900 mb-1">Create Billing Rule</h1>
+        <p className="text-sm text-gray-400 mb-6">Define a unit-range pricing rule.</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {errors.general?.map((e, i) => (
             <div key={i} className="rounded-lg bg-red-50 border border-red-100 px-4 py-3 text-sm text-red-700">{e}</div>
           ))}
 
-          <Field errors={errors} label="Profile Name" name="name" hint="e.g. Standard Monthly, Enterprise Annual">
-            <input type="text" value={form.name} onChange={(e) => update('name', e.target.value)}
-              className="input" placeholder="Enter profile name" />
-          </Field>
-
-          <Field errors={errors} label="Description" name="description">
-            <textarea value={form.description} onChange={(e) => update('description', e.target.value)}
-              className="input min-h-[80px] resize-y" placeholder="Brief description of this pricing plan" />
-          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            <Field errors={errors} label="Range Start" name="range_start" hint="Minimum units">
+              <input type="number" min={1} value={form.range_start}
+                onChange={(e) => update('range_start', parseInt(e.target.value, 10) || 1)} className="input" />
+            </Field>
+            <Field errors={errors} label="Range End" name="range_end" hint="Leave blank for unlimited">
+              <input type="number" min={1} value={form.range_end}
+                onChange={(e) => update('range_end', e.target.value)} className="input" placeholder="∞" />
+            </Field>
+          </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field errors={errors} label="Billing Interval" name="billing_interval">
-              <select value={form.billing_interval} onChange={(e) => update('billing_interval', e.target.value)} className="input">
-                {BILLING_INTERVALS.map((i) => <option key={i.value} value={i.value}>{i.label}</option>)}
-              </select>
+            <Field errors={errors} label="Price (cents)" name="price_cents" hint="e.g. 5000 = TZS 50.00">
+              <input type="number" min={0} value={form.price_cents}
+                onChange={(e) => update('price_cents', e.target.value)} className="input" />
             </Field>
-
             <Field errors={errors} label="Currency" name="currency">
               <select value={form.currency} onChange={(e) => update('currency', e.target.value)} className="input">
                 {BILLING_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -105,37 +111,34 @@ export default function CreateBillingProfilePage() {
           </div>
 
           <div className="grid grid-cols-2 gap-4">
-            <Field errors={errors} label="Trial Days" name="trial_days" hint="Free trial period">
-              <input type="number" min={0} max={365} value={form.trial_days}
-                onChange={(e) => update('trial_days', parseInt(e.target.value, 10) || 0)} className="input" />
+            <Field errors={errors} label="Effective From" name="effective_from">
+              <input type="date" value={form.effective_from}
+                onChange={(e) => update('effective_from', e.target.value)} className="input" />
             </Field>
-
-            <Field errors={errors} label="Grace Days" name="grace_days" hint="Days after expiry before suspension">
-              <input type="number" min={0} max={365} value={form.grace_days}
-                onChange={(e) => update('grace_days', parseInt(e.target.value, 10) || 0)} className="input" />
+            <Field errors={errors} label="Effective To" name="effective_to" hint="Leave blank for no end date">
+              <input type="date" value={form.effective_to}
+                onChange={(e) => update('effective_to', e.target.value)} className="input" />
             </Field>
           </div>
 
-          <div className="flex items-center gap-6">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.is_default}
-                onChange={(e) => update('is_default', e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-              <span className="text-sm text-gray-700 font-medium">Set as default</span>
-            </label>
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input type="checkbox" checked={form.status === 'active'}
-                onChange={(e) => update('status', e.target.checked ? 'active' : 'inactive')}
-                className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500" />
-              <span className="text-sm text-gray-700 font-medium">Active</span>
-            </label>
+          <div className="grid grid-cols-2 gap-4">
+            <Field errors={errors} label="Sort Order" name="sort_order" hint="Display order">
+              <input type="number" min={0} value={form.sort_order}
+                onChange={(e) => update('sort_order', e.target.value)} className="input" />
+            </Field>
+            <Field errors={errors} label="Status" name="status">
+              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </Field>
           </div>
 
           <div className="pt-2 flex items-center gap-3">
             <button type="submit" disabled={saving}
               className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
               style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}>
-              {saving ? 'Creating…' : 'Create Profile'}
+              {saving ? 'Creating…' : 'Create Rule'}
             </button>
             <Link href="/billing"
               className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors">

@@ -145,13 +145,13 @@ const WorkspaceService = {
   },
 
   /**
-   * Preview the pricing impact of a billing profile change.
+   * Preview the pricing impact of a billing rule change.
    *
    * @param {string} uuid
-   * @param {{ billing_profile_uuid: string, change_timing?: string, effective_at?: string }} data
+   * @param {{ billing_rule_uuid: string, change_timing?: string, effective_at?: string }} data
    */
-  previewBillingProfileChange(uuid, data) {
-    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-profile/preview`, {
+  previewBillingRuleChange(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-rule/preview`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
@@ -159,13 +159,13 @@ const WorkspaceService = {
   },
 
   /**
-   * Apply a billing profile change immediately or next cycle.
+   * Apply a billing rule change immediately or next cycle.
    *
    * @param {string} uuid
-   * @param {{ billing_profile_uuid: string, change_timing?: string, effective_at?: string }} data
+   * @param {{ billing_rule_uuid: string, change_timing?: string, effective_at?: string }} data
    */
-  assignBillingProfile(uuid, data) {
-    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-profile`, {
+  assignBillingRule(uuid, data) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/billing-rule`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),

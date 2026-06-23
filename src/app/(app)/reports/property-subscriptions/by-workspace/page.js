@@ -125,7 +125,7 @@ export default function ByWorkspaceReportPage() {
                   <td className="text-center text-sm text-gray-500">{fmt(r.unsubscribed_properties)}</td>
                   <td className="text-center text-sm text-gray-700">{fmt(r.payments_count)}</td>
                   <td className="text-sm font-medium text-gray-900 text-right">
-                    {new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format((r.total_collected_amount_cents || 0) / 100)}
+                    {new Intl.NumberFormat('en-US').format(r.total_collected_amount_cents || 0)}
                   </td>
                   <td className="text-xs text-gray-500">{fmtDateTime(r.created_at ?? r.createdAt)}</td>
                   <td className="text-xs text-gray-500">{fmtDateTime(r.updated_at ?? r.updatedAt)}</td>

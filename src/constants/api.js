@@ -7,8 +7,7 @@
 export const ADMIN_API_BASE = '/api/v1/admin';
 
 export const TENANTS_PATH = `${ADMIN_API_BASE}/tenants`;
-export const BILLING_PATH = `${ADMIN_API_BASE}/billing-profiles`;
-export const BILLING_RULES_PATH = `${ADMIN_API_BASE}/billing-rules`;
+export const BILLING_PATH = `${ADMIN_API_BASE}/billing-rules`;
 export const PLATFORM_OVERVIEW_PATH = `${ADMIN_API_BASE}/platform/overview`;
 export const PROPERTY_SUBSCRIPTION_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for property subscriptions
 export const PROPERTY_SUBSCRIPTION_PAYMENT_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for payments

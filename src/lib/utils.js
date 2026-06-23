@@ -9,7 +9,7 @@ export function formatCurrency(cents, currency = 'TZS') {
   if (cents == null) return '—';
   return new Intl.NumberFormat('en-TZ', {
     style: 'currency', currency, minimumFractionDigits: 0,
-  }).format(cents / 100);
+  }).format(cents);
 }
 
 export function capitalize(str) {

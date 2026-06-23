@@ -78,7 +78,7 @@ function PreviewSection({ preview, loading }) {
     );
   }
 
-  const bp = preview.billing_profile;
+  const bp = preview.billing_rule;
   const eligible = preview.eligibility?.is_billable_cycle;
   const hasBillable = preview.eligibility?.has_billable_adjustment;
   const reason = preview.eligibility?.reason;
@@ -97,7 +97,7 @@ function PreviewSection({ preview, loading }) {
           <div>
             <p className="text-sm font-bold text-gray-900">Usage Adjustment Preview</p>
             <p className="text-xs text-gray-400">
-              {bp ? `${bp.name} · ${bp.billing_interval}` : 'No billing profile'}
+              {bp ? `${bp.name} · ${bp.billing_interval}` : 'No billing rule'}
               {' · '}
               <span className={eligible ? 'text-green-600 font-semibold' : 'text-amber-600 font-semibold'}>
                 {eligible ? (hasBillable ? 'Billable adjustment' : 'No adjustment needed') : 'Not eligible'}
