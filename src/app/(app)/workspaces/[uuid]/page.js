@@ -247,7 +247,7 @@ function PropertiesTab({ uuid }) {
                   </td>
                   <td className="text-sm font-medium text-gray-900">{fmtCents(p.estimated_price_cents, rule?.currency)}</td>
                   <td className="text-xs text-gray-500">{fmtDate(p.created_at)}</td>
-                  <td><Badge map={PROP_SUB_STATUS_MAP} value={p.subscription_status} /></td>
+                  <td><Badge map={PROP_SUB_STATUS_MAP} value={p.subscription_status ?? p.status} /></td>
                 </tr>
               );
             })}
