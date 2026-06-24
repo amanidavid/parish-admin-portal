@@ -3,6 +3,7 @@ import { useCallback } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import useAdminAuthStore from '@/store/adminAuthStore';
+import { APP_NAME } from '@/constants/app';
 
 const NAV_GROUPS = [
   {
@@ -144,7 +145,7 @@ export default function Sidebar({ open, user }) {
         {open && (
           <div>
             <span className="font-bold text-white text-[15px] whitespace-nowrap tracking-tight block leading-tight">
-              Parish MIS
+              {APP_NAME}
             </span>
             <span className="text-[10px] text-primary-400 font-semibold tracking-widest uppercase">Admin Portal</span>
           </div>

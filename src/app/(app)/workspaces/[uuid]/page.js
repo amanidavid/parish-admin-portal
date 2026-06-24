@@ -51,7 +51,6 @@ function OperationalTab({ data }) {
     { icon: 'M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6', color: '#0891b2', bg: '#ecfeff', title: 'Units', main: fmt(op?.units?.total), sub: `${pct(op?.units?.occupied, op?.units?.total)}% occupied`, occBar: { occupied: op?.units?.occupied ?? 0, total: op?.units?.total ?? 0 }, rows: [{ label: 'Occupied', value: fmt(op?.units?.occupied), clr: '#16a34a' }, { label: 'Vacant', value: fmt(op?.units?.vacant), clr: '#d97706' }, { label: 'Maintenance', value: fmt(op?.units?.maintenance), clr: '#dc2626' }] },
     { icon: 'M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z', color: '#7c3aed', bg: '#f5f3ff', title: 'Customers', main: fmt(op?.customers?.total), sub: null, rows: [{ label: 'Active', value: fmt(op?.customers?.active), clr: '#16a34a' }, { label: 'Inactive', value: fmt(op?.customers?.inactive), clr: '#9ca3af' }] },
     { icon: 'M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z', color: '#0284c7', bg: '#f0f9ff', title: 'Contracts', main: fmt(op?.contracts?.total), sub: null, rows: [{ label: 'Active', value: fmt(op?.contracts?.active), clr: '#16a34a' }, { label: 'Draft', value: fmt(op?.contracts?.draft), clr: '#6b7280' }, { label: 'Expired', value: fmt(op?.contracts?.expired), clr: '#dc2626' }] },
-    { icon: 'M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z', color: '#16a34a', bg: '#f0fdf4', title: 'Revenue', main: fmtAmt(op?.contracts?.active_contract_amount), sub: 'active contract value', rows: [{ label: 'Total contracted', value: fmtAmt(op?.contracts?.total_contract_amount) }] },
     { icon: 'M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z', color: '#6366f1', bg: '#eef2ff', title: 'Staff', main: fmt(op?.staff?.total), sub: null, rows: [{ label: 'Active', value: fmt(op?.staff?.active), clr: '#16a34a' }, { label: 'Inactive', value: fmt(op?.staff?.inactive), clr: '#9ca3af' }] },
   ], [op]);
   return (
@@ -410,7 +409,7 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
     }
   };
 
-  const isProvFailed = workspace?.provisioning_status === 'failed';
+  const canRetryProvisioning = workspace?.can_retry_provisioning === true;
   const isActive = workspace?.status === 'active';
 
   return (
@@ -428,7 +427,7 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
         </button>
         {open && (
           <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg z-20 py-1">
-            {isProvFailed && (
+            {canRetryProvisioning && (
               <button onClick={() => promptAction('Retry Provisioning', 'Retry provisioning for this workspace?', () => WorkspaceService.retryProvisioning(uuid, { showLoader: false }))}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
                 Retry Provisioning
@@ -473,6 +472,7 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
 export default function WorkspaceDetailPage() {
   const { uuid } = useParams();
   const [workspace, setWorkspace] = useState(null);
+  const [subscription, setSubscription] = useState(null);
   const [pageLoading, setPageLoading] = useState(true);
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -484,10 +484,17 @@ export default function WorkspaceDetailPage() {
   const fetchedRef = useRef(new Set(['operational', 'subscription']));
 
   const loadOperational = useCallback(async () => {
-    const res = await WorkspaceService.operationalSummary(uuid);
-    const d = res?.data ?? null;
+    const [summaryRes, workspaceRes, subRes] = await Promise.allSettled([
+      WorkspaceService.operationalSummary(uuid),
+      WorkspaceService.show(uuid),
+      WorkspaceService.subscription(uuid),
+    ]);
+    const d = summaryRes.status === 'fulfilled' ? (summaryRes.value?.data ?? null) : null;
+    const ws = workspaceRes.status === 'fulfilled' ? (workspaceRes.value?.data ?? null) : null;
+    const sub = subRes.status === 'fulfilled' ? (subRes.value?.data ?? null) : null;
     setTabData((prev) => ({ ...prev, operational: d }));
-    setWorkspace(d?.workspace ?? null);
+    setWorkspace(ws ?? d?.workspace ?? null);
+    setSubscription(sub);
     setTabStatus((prev) => ({ ...prev, operational: d ? 'loaded' : 'empty' }));
     setPageLoading(false);
   }, [uuid]);
@@ -584,7 +591,46 @@ export default function WorkspaceDetailPage() {
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-400 mt-1.5">Created {fmtDate(workspace?.created_at ?? workspace?.createdAt)}</p>
+              {subscription?.subscription && (
+                <div className="flex flex-wrap items-center gap-x-6 gap-y-1.5 mt-2">
+                  {subscription.subscription.effective_status === 'trialing' ? (
+                    <>
+                      <div>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Trial Period</span>
+                        <p className="text-xs text-gray-700 font-medium">{fmtDate(subscription.subscription.current_period_starts_at)} – {fmtDate(subscription.subscription.current_period_ends_at)}</p>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Trial Ends</span>
+                        <p className="text-xs text-gray-700 font-medium">{fmtDate(subscription.subscription.trial_ends_at)}</p>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Trial Status</span>
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 text-xs font-medium border border-blue-100">
+                          <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+                          Active
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Current Period</span>
+                        <p className="text-xs text-gray-700 font-medium">{fmtDate(subscription.subscription.current_period_starts_at)} – {fmtDate(subscription.subscription.current_period_ends_at)}</p>
+                      </div>
+                      {subscription.subscription.is_trial_expired && (
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">Trial Status</span>
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs font-medium border border-gray-200">
+                            <span className="w-1.5 h-1.5 rounded-full bg-gray-400" />
+                            Expired
+                          </span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              )}
+              <p className="text-xs text-gray-400 mt-2">Created {fmtDate(workspace?.created_at ?? workspace?.createdAt)}</p>
             </div>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">

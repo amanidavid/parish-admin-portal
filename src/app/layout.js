@@ -1,9 +1,10 @@
 import "./globals.css";
 import GlobalLoadingOverlay from '@/components/ui/GlobalLoadingOverlay';
 import Notification from '@/components/ui/Notification';
+import { APP_NAME } from '@/constants/app';
 
 export const metadata = {
-  title: "Parish MIS — Admin",
+  title: `${APP_NAME} — Admin`,
   description: "Parish Property MIS Administration Portal",
 };
 
