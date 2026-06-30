@@ -2,22 +2,33 @@
 import { useEffect, useState, useCallback, useMemo, memo } from 'react';
 import Link from 'next/link';
 import BillingService from '@/services/BillingService';
-import { Skel, Badge, StatCard } from '@/components/ui';
+import { Skel, Badge, StatCard, ConfirmModal } from '@/components/ui';
 import { fmtCents } from '@/lib/formatters';
 import { BILLING_STATUS_MAP, BILLING_CURRENCIES } from '@/constants/status';
+
+function Field({ label, name, children, hint, required, errors }) {
+  return (
+    <div>
+      <label className="label">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {children}
+      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {errors[name]?.map((e, i) => <p key={i} className="text-xs text-red-500 mt-1">{e}</p>)}
+    </div>
+  );
+}
 
 const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState(null);
   const [form, setForm] = useState({
-    range_start: rule?.range_start ?? 1,
-    range_end: rule?.range_end ?? '',
-    price_cents: rule?.price_cents ?? 0,
+    unit_price_cents: String(rule?.unit_price_cents ?? ''),
     currency: rule?.currency ?? 'TZS',
     effective_from: rule?.effective_from ?? new Date().toISOString().split('T')[0],
     effective_to: rule?.effective_to ?? '',
-    sort_order: rule?.sort_order ?? 0,
     status: rule?.status ?? 'active',
   });
 
@@ -34,9 +45,7 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
     setSuccess(null);
     const payload = {
       ...form,
-      range_end: form.range_end === '' ? null : parseInt(form.range_end, 10),
-      price_cents: parseInt(form.price_cents, 10) || 0,
-      sort_order: parseInt(form.sort_order, 10) || 0,
+      unit_price_cents: parseInt(form.unit_price_cents, 10) || 0,
       effective_to: form.effective_to === '' ? null : form.effective_to,
     };
     try {
@@ -57,18 +66,6 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
       setSaving(false);
     }
   }, [form, mode, rule, onSaved]);
-
-  const Field = ({ label, name, children, hint, required }) => (
-    <div>
-      <label className="label">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
-      {errors[name]?.map((e, i) => <p key={i} className="text-xs text-red-500 mt-1">{e}</p>)}
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -91,43 +88,29 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
         ))}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Range Start" name="range_start" hint="Minimum units" required>
-              <input type="number" min={1} value={form.range_start}
-                onChange={(e) => update('range_start', parseInt(e.target.value, 10) || 1)} className="input" />
+            <Field errors={errors} label="Unit Price (cents)" name="unit_price_cents" required>
+              <input type="number" min={0} value={form.unit_price_cents}
+                onChange={(e) => update('unit_price_cents', e.target.value)} className="input" />
             </Field>
-            <Field label="Range End" name="range_end" hint="Leave blank for unlimited">
-              <input type="number" min={1} value={form.range_end}
-                onChange={(e) => update('range_end', e.target.value)} className="input" placeholder="∞" />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Price (cents)" name="price_cents" required>
-              <input type="number" min={0} value={form.price_cents}
-                onChange={(e) => update('price_cents', e.target.value)} className="input" />
-            </Field>
-            <Field label="Currency" name="currency">
+            <Field errors={errors} label="Currency" name="currency">
               <select value={form.currency} onChange={(e) => update('currency', e.target.value)} className="input">
                 {BILLING_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Effective From" name="effective_from" required>
+            <Field errors={errors} label="Effective From" name="effective_from" required>
               <input type="date" value={form.effective_from}
                 onChange={(e) => update('effective_from', e.target.value)} className="input" />
             </Field>
-            <Field label="Effective To" name="effective_to">
+            <Field errors={errors} label="Effective To" name="effective_to">
               <input type="date" value={form.effective_to}
                 onChange={(e) => update('effective_to', e.target.value)} className="input" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Sort Order" name="sort_order" hint="Display order">
-              <input type="number" min={0} value={form.sort_order}
-                onChange={(e) => update('sort_order', e.target.value)} className="input" />
-            </Field>
-            <Field label="Status" name="status">
-              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input">
+          <div>
+            <Field errors={errors} label="Status" name="status">
+              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input w-full">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -158,6 +141,9 @@ export default function BillingRulesPage() {
 
   const [filters, setFilters] = useState({ status: '', page: 1 });
   const [modal, setModal] = useState(null); // { mode:'create'|'edit', rule? }
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteResult, setDeleteResult] = useState(null);
 
   const fetchRules = useCallback(async (f) => {
     setLoading(true);
@@ -203,6 +189,30 @@ export default function BillingRulesPage() {
   }, [meta, filters.page]);
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '—';
+
+  const handleDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteResult(null);
+    try {
+      const res = await BillingService.destroy(deleteTarget.uuid);
+      if (res?.success) {
+        setDeleteResult({ type: 'success', message: 'Billing rule deleted successfully.' });
+        setRules((prev) => prev.filter((r) => r.uuid !== deleteTarget.uuid));
+      } else {
+        setDeleteResult({ type: 'error', message: res?.message || 'Failed to delete billing rule.' });
+      }
+    } catch {
+      setDeleteResult({ type: 'error', message: 'Network error. Please try again.' });
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget]);
+
+  const closeDelete = useCallback(() => {
+    setDeleteTarget(null);
+    setDeleteResult(null);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -256,8 +266,7 @@ export default function BillingRulesPage() {
         <table className="data-table">
           <thead>
             <tr>
-              <th>Unit Range</th>
-              <th>Price</th>
+              <th>Unit Price</th>
               <th>Currency</th>
               <th>Effective From</th>
               <th>Effective To</th>
@@ -268,7 +277,6 @@ export default function BillingRulesPage() {
           <tbody>
             {loading && Array.from({ length: 6 }, (_, i) => (
               <tr key={i}>
-                <td><Skel w="w-20" h="h-3" /></td>
                 <td><Skel w="w-24" h="h-3" /></td>
                 <td><Skel w="w-10" h="h-3" /></td>
                 <td><Skel w="w-20" h="h-3" /></td>
@@ -278,27 +286,34 @@ export default function BillingRulesPage() {
               </tr>
             ))}
             {!loading && rules.length === 0 && (
-              <tr><td colSpan={7} className="text-center py-14 text-gray-400 text-sm">No billing rules found</td></tr>
+              <tr><td colSpan={6} className="text-center py-14 text-gray-400 text-sm">No billing rules found</td></tr>
             )}
             {!loading && rules.map((r) => (
               <tr key={r.uuid}>
-                <td className="text-sm font-medium text-gray-900">
-                  {r.unit_range_label || `${r.range_start}${r.range_end ? `–${r.range_end}` : '+'} units`}
-                </td>
-                <td className="text-sm text-gray-900 font-medium">{r.price_formatted || fmtCents(r.price_cents, r.currency)}</td>
+                <td className="text-sm text-gray-900 font-medium">{fmtCents(r.unit_price_cents, r.currency)}</td>
                 <td className="text-xs text-gray-500 font-mono">{r.currency}</td>
                 <td className="text-xs text-gray-500">{fmtDate(r.effective_from)}</td>
                 <td className="text-xs text-gray-500">{fmtDate(r.effective_to) || '—'}</td>
                 <td><Badge map={BILLING_STATUS_MAP} value={r.status} /></td>
                 <td className="text-right">
-                  <button
-                    onClick={() => setModal({ mode: 'edit', rule: r })}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors">
-                    Edit
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                    </svg>
-                  </button>
+                  <div className="inline-flex items-center justify-end gap-2">
+                    <button
+                      onClick={() => setModal({ mode: 'edit', rule: r })}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-primary-700 bg-primary-50 hover:bg-primary-100 transition-colors">
+                      Edit
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(r)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 transition-colors">
+                      Delete
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -338,6 +353,19 @@ export default function BillingRulesPage() {
           }}
         />
       )}
+
+      <ConfirmModal
+        open={!!deleteTarget}
+        onClose={closeDelete}
+        onConfirm={handleDelete}
+        onRetry={handleDelete}
+        title="Delete Billing Rule"
+        message={`Are you sure you want to delete the billing rule for ${deleteTarget?.workspace_name || 'this workspace'}? This action cannot be undone.`}
+        confirmLabel="Delete"
+        loading={deleting}
+        result={deleteResult}
+        danger
+      />
     </div>
   );
 }

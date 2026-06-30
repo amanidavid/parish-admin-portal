@@ -148,7 +148,7 @@ const WorkspaceService = {
    * Preview the pricing impact of a billing rule change.
    *
    * @param {string} uuid
-   * @param {{ billing_rule_uuid: string, change_timing?: string, effective_at?: string }} data
+   * @param {{ unit_price_cents: number, currency: string, effective_from: string, change_timing?: string }} data
    */
   previewBillingRuleChange(uuid, data) {
     return apiFetch(`${TENANTS_PATH}/${uuid}/billing-rule/preview`, {
@@ -162,7 +162,7 @@ const WorkspaceService = {
    * Apply a billing rule change immediately or next cycle.
    *
    * @param {string} uuid
-   * @param {{ billing_rule_uuid: string, change_timing?: string, effective_at?: string }} data
+   * @param {{ unit_price_cents: number, currency: string, effective_from: string, change_timing?: string }} data
    */
   assignBillingRule(uuid, data) {
     return apiFetch(`${TENANTS_PATH}/${uuid}/billing-rule`, {

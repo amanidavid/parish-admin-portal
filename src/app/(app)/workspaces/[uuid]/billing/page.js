@@ -3,7 +3,6 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import WorkspaceService from '@/services/WorkspaceService';
-import BillingService from '@/services/BillingService';
 import { Skel } from '@/components/ui';
 import { fmtCents, fmtDateTime } from '@/lib/formatters';
 
@@ -15,48 +14,57 @@ const TIMING_OPTS = [
 export default function ChangeBillingRulePage() {
   const { uuid } = useParams();
   const router = useRouter();
-  const [profiles, setProfiles] = useState([]);
   const [currentSub, setCurrentSub] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [selectedProfileUuid, setSelectedProfileUuid] = useState('');
   const [timing, setTiming] = useState('immediate_prorated');
+  const [unitPriceCents, setUnitPriceCents] = useState('');
+  const [currency, setCurrency] = useState('TZS');
+  const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().split('T')[0]);
   const [preview, setPreview] = useState(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [applying, setApplying] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    Promise.all([
-      BillingService.index({ per_page: 100, status: 'active' }),
-      WorkspaceService.subscription(uuid),
-    ]).then(([pRes, sRes]) => {
-      setProfiles(pRes?.data ?? []);
-      setCurrentSub(sRes?.data ?? null);
+    WorkspaceService.subscription(uuid).then((sRes) => {
+      const sub = sRes?.data ?? null;
+      setCurrentSub(sub);
+      const br = sub?.subscription?.billing_rule;
+      if (br) {
+        setUnitPriceCents(String(br.unit_price_cents ?? ''));
+        setCurrency(br.currency || 'TZS');
+      }
       setLoading(false);
     });
   }, [uuid]);
 
   const handlePreview = useCallback(async () => {
-    if (!selectedProfileUuid) return;
+    const up = parseInt(unitPriceCents, 10);
+    if (!up || up <= 0) return;
     setPreviewLoading(true);
     setError('');
     setPreview(null);
     const res = await WorkspaceService.previewBillingRuleChange(uuid, {
-      billing_rule_uuid: selectedProfileUuid,
+      unit_price_cents: up,
+      currency,
+      effective_from: effectiveFrom,
       change_timing: timing,
     });
     setPreviewLoading(false);
     if (res?.success) { setPreview(res.data); }
     else if (res?.message) { setError(res.message); }
     else if (res?.errors) { setError(Object.values(res.errors).flat().join(', ')); }
-  }, [selectedProfileUuid, timing, uuid]);
+  }, [unitPriceCents, currency, effectiveFrom, timing, uuid]);
 
   const handleApply = useCallback(async () => {
-    if (!selectedProfileUuid) return;
+    const up = parseInt(unitPriceCents, 10);
+    if (!up || up <= 0) return;
     setApplying(true);
     setError('');
     const res = await WorkspaceService.assignBillingRule(uuid, {
-      billing_rule_uuid: selectedProfileUuid,
+      unit_price_cents: up,
+      currency,
+      effective_from: effectiveFrom,
       change_timing: timing,
     });
     setApplying(false);
@@ -67,7 +75,7 @@ export default function ChangeBillingRulePage() {
     } else if (res?.errors) {
       setError(Object.values(res.errors).flat().join(', '));
     }
-  }, [selectedProfileUuid, timing, uuid, router]);
+  }, [unitPriceCents, currency, effectiveFrom, timing, uuid, router]);
 
 
   if (loading) {
@@ -103,25 +111,39 @@ export default function ChangeBillingRulePage() {
         {currentBp && (
           <div className="rounded-xl bg-gray-50 border border-gray-100 px-4 py-3 mb-5">
             <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">Current Billing Rule</p>
-            <p className="text-sm font-semibold text-gray-900 mt-0.5">{currentBp.name}</p>
-            <p className="text-xs text-gray-500">{currentBp.billing_interval} · {currentBp.currency}</p>
+            <p className="text-sm font-semibold text-gray-900 mt-0.5">{currentBp.workspace_name || 'Workspace Rule'}</p>
+            <p className="text-xs text-gray-500">{fmtCents(currentBp.unit_price_cents, currentBp.currency)} per unit · {currentBp.currency}</p>
           </div>
         )}
 
-        {/* Selection */}
+        {/* Inputs */}
         <div className="space-y-4 mb-6">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="label text-xs">Unit Price (cents)</label>
+              <input
+                type="number" min={0}
+                value={unitPriceCents}
+                onChange={(e) => { setUnitPriceCents(e.target.value); setPreview(null); setError(''); }}
+                className="input"
+                placeholder="e.g. 1000"
+              />
+            </div>
+            <div>
+              <label className="label text-xs">Currency</label>
+              <select value={currency} onChange={(e) => { setCurrency(e.target.value); setPreview(null); }} className="input">
+                <option value="TZS">TZS</option>
+              </select>
+            </div>
+          </div>
           <div>
-            <label className="label text-xs">Select New Billing Rule</label>
-            <select
-              value={selectedProfileUuid}
-              onChange={(e) => { setSelectedProfileUuid(e.target.value); setPreview(null); setError(''); }}
+            <label className="label text-xs">Effective From</label>
+            <input
+              type="date"
+              value={effectiveFrom}
+              onChange={(e) => { setEffectiveFrom(e.target.value); setPreview(null); }}
               className="input"
-            >
-              <option value="">Choose a rule…</option>
-              {profiles.map((p) => (
-                <option key={p.uuid} value={p.uuid}>{p.name} ({p.billing_interval}, {p.currency})</option>
-              ))}
-            </select>
+            />
           </div>
           <div>
             <label className="label text-xs">Change Timing</label>
@@ -131,7 +153,7 @@ export default function ChangeBillingRulePage() {
           </div>
           <button
             onClick={handlePreview}
-            disabled={!selectedProfileUuid || previewLoading}
+            disabled={!unitPriceCents || previewLoading}
             className="px-5 py-2.5 rounded-xl text-sm font-semibold text-white transition-opacity hover:opacity-90 disabled:opacity-50"
             style={{ background: 'linear-gradient(135deg,#ea580c,#f97316)' }}
           >
@@ -146,16 +168,16 @@ export default function ChangeBillingRulePage() {
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
                 <p className="text-xs text-gray-400">Current Price</p>
-                <p className="font-semibold text-gray-900">{fmtCents(preview.pricing.current_estimated_price_cents, preview.selected_billing_rule?.currency)}</p>
+                <p className="font-semibold text-gray-900">{fmtCents(preview.pricing.current_estimated_price_cents, currency)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400">New Price</p>
-                <p className="font-semibold text-gray-900">{fmtCents(preview.pricing.new_estimated_price_cents, preview.selected_billing_rule?.currency)}</p>
+                <p className="font-semibold text-gray-900">{fmtCents(preview.pricing.new_estimated_price_cents, currency)}</p>
               </div>
               <div>
                 <p className="text-xs text-gray-400">Delta</p>
                 <p className={`font-semibold ${preview.pricing.delta_price_cents >= 0 ? 'text-red-600' : 'text-green-600'}`}>
-                  {preview.pricing.delta_price_cents >= 0 ? '+' : ''}{fmtCents(preview.pricing.delta_price_cents, preview.selected_billing_rule?.currency)}
+                  {preview.pricing.delta_price_cents >= 0 ? '+' : ''}{fmtCents(preview.pricing.delta_price_cents, currency)}
                 </p>
               </div>
               <div>
@@ -164,11 +186,11 @@ export default function ChangeBillingRulePage() {
               </div>
             </div>
 
-            {preview.proration.applies && (
+            {preview.proration?.applies && (
               <div className="rounded-lg bg-amber-50 border border-amber-100 px-4 py-3 text-sm">
                 <p className="font-semibold text-amber-800">Proration ({preview.proration.adjustment_type})</p>
                 <p className="text-amber-700 mt-1">
-                  {fmtCents(preview.proration.prorated_adjustment_cents, preview.selected_billing_rule?.currency)} for {preview.proration.remaining_cycle_days} of {preview.proration.total_cycle_days} days remaining
+                  {fmtCents(preview.proration.prorated_adjustment_cents, currency)} for {preview.proration.remaining_cycle_days} of {preview.proration.total_cycle_days} days remaining
                 </p>
               </div>
             )}
@@ -183,7 +205,7 @@ export default function ChangeBillingRulePage() {
                 {applying ? 'Applying…' : 'Confirm & Apply'}
               </button>
               <button
-                onClick={() => { setPreview(null); setSelectedProfileUuid(''); }}
+                onClick={() => { setPreview(null); setUnitPriceCents(''); }}
                 className="px-5 py-2.5 rounded-xl text-sm font-semibold text-gray-600 border border-gray-200 hover:bg-gray-50 transition-colors"
               >
                 Cancel

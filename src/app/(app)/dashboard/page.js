@@ -1175,7 +1175,7 @@ export default function DashboardPage() {
 
             {!billingLoading && billingSeries.length > 0 && (
               <p className="text-[11px] text-gray-500 mt-1.5 text-right">
-                <span className="font-semibold text-gray-800">{billingSummary.billing_rules_count || 0}</span> rules ·{' '}
+                <span className="font-semibold text-gray-800">{billingSummary.billing_rules_count || 0}</span> workspaces ·{' '}
                 <span className="font-semibold text-gray-800">{fmtCents(billingSummary.total_collected_amount_cents || 0)}</span> total
               </p>
             )}

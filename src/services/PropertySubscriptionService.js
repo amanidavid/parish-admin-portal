@@ -38,7 +38,7 @@ const PropertySubscriptionService = {
    * Preview a property subscription payment before recording it.
    *
    * @param {string} uuid — workspace uuid
-   * @param {{ property_uuid, billing_rule_uuid, months_paid, payment_date, reference_number?, notes? }} data
+   * @param {{ property_uuid, months_paid, payment_date, reference_number?, notes? }} data
    * @param {object} [options]
    */
   previewPayment(uuid, data, options = {}) {
@@ -54,7 +54,7 @@ const PropertySubscriptionService = {
    * Record a property subscription payment.
    *
    * @param {string} uuid — workspace uuid
-   * @param {{ property_uuid, billing_rule_uuid, months_paid, payment_date, reference_number?, notes? }} data
+   * @param {{ property_uuid, months_paid, payment_date, reference_number?, notes? }} data
    * @param {object} [options]
    */
   recordPayment(uuid, data, options = {}) {

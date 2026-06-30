@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import WorkspaceService from '@/services/WorkspaceService';
+import PropertySubscriptionService from '@/services/PropertySubscriptionService';
+import PaymentModal from '@/components/property-subscriptions/PaymentModal';
 import { Skel, Badge, OccBar, ConfirmModal } from '@/components/ui';
 import { fmt, fmtAmt, pct, fmtDate, fmtCents } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP, ACCESS_CFG, CT_COLORS, SUB_STATUS_MAP } from '@/constants/status';
@@ -213,20 +215,19 @@ function PropertiesTab({ uuid }) {
       </div>
       <div className="data-table-wrap">
         <table className="data-table">
-          <thead><tr><th>Property</th><th className="text-center">Units</th><th>Matched Rule</th><th>Price</th><th>Created</th><th>Status</th></tr></thead>
+          <thead><tr><th>Property</th><th className="text-center">Units</th><th>Price</th><th>Created</th><th>Status</th></tr></thead>
           <tbody>
             {loading && Array.from({ length: 4 }, (_, i) => (
               <tr key={i}>
                 <td><Skel w="w-32" h="h-3.5" /></td>
                 <td className="text-center"><Skel w="w-8" h="h-3" /></td>
-                <td><Skel w="w-28" h="h-3" /></td>
                 <td><Skel w="w-20" h="h-3" /></td>
                 <td><Skel w="w-16" h="h-3" /></td>
                 <td><Skel w="w-14" h="h-5" /></td>
               </tr>
             ))}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={6} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
+              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">No properties found</td></tr>
             )}
             {!loading && rows.map((p) => {
               const rule = p.matched_rule;
@@ -241,9 +242,6 @@ function PropertiesTab({ uuid }) {
                     </div>
                   </td>
                   <td className="text-center text-sm text-gray-700">{fmt(p.registered_units)}</td>
-                  <td className="text-xs text-gray-600">
-                    {rule ? `${rule.range_start}-${rule.range_end ?? '∞'} units @ ${fmtCents(rule.price_cents, rule.currency)}` : '—'}
-                  </td>
                   <td className="text-sm font-medium text-gray-900">{fmtCents(p.estimated_price_cents, rule?.currency)}</td>
                   <td className="text-xs text-gray-500">{fmtDate(p.created_at)}</td>
                   <td><Badge map={PROP_SUB_STATUS_MAP} value={p.subscription_status ?? p.status} /></td>
@@ -319,43 +317,86 @@ function LocationTab({ data }) {
 
 // ─── Tab: Subscription ────────────────────────────────────────────────────────
 function SubscriptionTab({ uuid }) {
-  const items = [
-    {
-      label: 'Usage Adjustments',
-      desc: 'Modify tenant usage limits and allocations',
-      href: `/workspaces/${uuid}/usage-adjustments`,
-      icon: 'M13 7h8m0 0v8m0-8l-8 8-4-4-6 6',
-    },
-    {
-      label: 'Property Subscriptions',
-      desc: 'View and manage per-property billing',
-      href: `/workspaces/${uuid}/property-subscriptions`,
-      icon: 'M9 7h6m0 3.666V3m-6 3.666V3m0 7.334V21m6-10.666V21m0-3.666a3 3 0 11-6 0 3 3 0 016 0z',
-    },
-  ];
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [payProperty, setPayProperty] = useState(null);
+
+  const load = useCallback(() => {
+    let active = true;
+    setLoading(true);
+    PropertySubscriptionService.index(uuid, { per_page: 50 })
+      .then((res) => {
+        if (!active) return;
+        setRows(Array.isArray(res?.data) ? res.data : []);
+      })
+      .catch(() => active && setRows([]))
+      .finally(() => active && setLoading(false));
+    return () => { active = false; };
+  }, [uuid]);
+
+  useEffect(() => load(), [load]);
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-200 divide-y divide-gray-100">
-      {items.map((item) => (
-        <Link
-          key={item.label}
-          href={item.href}
-          className="group flex items-center gap-4 px-6 py-5 hover:bg-gray-50 transition-colors"
-        >
-          <div className="w-10 h-10 rounded-xl bg-gray-100 flex items-center justify-center shrink-0 group-hover:bg-gray-200 transition-colors">
-            <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={item.icon} />
-            </svg>
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-gray-900">{item.label}</p>
-            <p className="text-xs text-gray-400 mt-0.5">{item.desc}</p>
-          </div>
-          <svg className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-          </svg>
-        </Link>
-      ))}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-gray-700">Property Subscriptions</h3>
+      </div>
+      <div className="data-table-wrap">
+        <table className="data-table">
+          <thead><tr><th>Property</th><th className="text-center">Units</th><th>Subscription</th><th>Period End</th><th className="text-center">Actions</th></tr></thead>
+          <tbody>
+            {loading && Array.from({ length: 4 }, (_, i) => (
+              <tr key={i}>
+                <td><Skel w="w-32" h="h-3.5" /></td>
+                <td className="text-center"><Skel w="w-8" h="h-3" /></td>
+                <td><Skel w="w-16" h="h-5" /></td>
+                <td><Skel w="w-20" h="h-3" /></td>
+                <td className="text-center"><Skel w="w-12" h="h-7" /></td>
+              </tr>
+            ))}
+            {!loading && rows.length === 0 && (
+              <tr><td colSpan={5} className="text-center py-12 text-gray-400 text-sm">No property subscriptions found</td></tr>
+            )}
+            {!loading && rows.map((s, i) => (
+              <tr key={s.property_uuid || `sub-${i}`}>
+                <td>
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-7 h-7 rounded-lg bg-orange-100 flex items-center justify-center shrink-0">
+                      <span className="text-orange-700 text-[10px] font-bold">{(s.name || 'P').charAt(0).toUpperCase()}</span>
+                    </div>
+                    <span className="font-medium text-gray-900 text-sm">{s.name}</span>
+                  </div>
+                </td>
+                <td className="text-center text-sm text-gray-700">{fmt(s.current_registered_units_total)}</td>
+                <td><Badge map={PROP_SUB_STATUS_MAP} value={s.subscription?.effective_status || s.subscription?.status || 'unsubscribed'} /></td>
+                <td className="text-xs text-gray-500">{fmtDate(s.subscription?.current_period_ends_on) || '—'}</td>
+                <td className="text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Link href={`/workspaces/${uuid}/property-subscriptions/${s.property_uuid}`}
+                      className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-orange-600 bg-orange-50 hover:bg-orange-100 transition-colors">
+                      Details
+                    </Link>
+                    <button onClick={() => setPayProperty(s)}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white transition-opacity hover:opacity-90"
+                      style={{ background: 'linear-gradient(135deg,#16a34a,#22c55e)' }}>
+                      Pay
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {payProperty && (
+        <PaymentModal
+          workspaceUuid={uuid}
+          property={payProperty}
+          onClose={() => setPayProperty(null)}
+          onSuccess={() => load()}
+        />
+      )}
     </div>
   );
 }

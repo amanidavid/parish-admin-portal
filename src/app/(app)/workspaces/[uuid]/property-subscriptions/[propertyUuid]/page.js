@@ -162,6 +162,8 @@ export default function PropertySubscriptionDetailPage() {
                 <thead>
                   <tr>
                     <th>Payment Date</th>
+                    <th>Units</th>
+                    <th>Unit Price</th>
                     <th>Months</th>
                     <th>Monthly Price</th>
                     <th>Total</th>
@@ -172,6 +174,8 @@ export default function PropertySubscriptionDetailPage() {
                   {payments.map((p) => (
                     <tr key={p.uuid}>
                       <td className="text-sm text-gray-700">{fmtDate(p.payment_date)}</td>
+                      <td className="text-center text-sm text-gray-700">{fmt(p.unit_count_at_payment)}</td>
+                      <td className="text-sm text-gray-700">{fmtCents(p.unit_price_cents_at_payment)}</td>
                       <td className="text-center text-sm text-gray-700">{fmt(p.months_paid)}</td>
                       <td className="text-sm text-gray-700">{fmtCents(p.monthly_price_cents)}</td>
                       <td className="text-sm font-medium text-gray-900">{fmtCents(p.total_amount_cents)}</td>

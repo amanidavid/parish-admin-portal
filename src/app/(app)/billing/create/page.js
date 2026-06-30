@@ -24,13 +24,10 @@ export default function CreateBillingRulePage() {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [form, setForm] = useState({
-    range_start: 1,
-    range_end: '',
-    price_cents: 0,
+    unit_price_cents: '',
     currency: 'TZS',
     effective_from: new Date().toISOString().split('T')[0],
     effective_to: '',
-    sort_order: 0,
     status: 'active',
   });
 
@@ -46,9 +43,7 @@ export default function CreateBillingRulePage() {
     try {
       const payload = {
         ...form,
-        range_end: form.range_end === '' ? null : parseInt(form.range_end, 10),
-        price_cents: parseInt(form.price_cents, 10) || 0,
-        sort_order: parseInt(form.sort_order, 10) || 0,
+        unit_price_cents: parseInt(form.unit_price_cents, 10) || 0,
         effective_to: form.effective_to === '' ? null : form.effective_to,
       };
       const res = await BillingService.store(payload);
@@ -80,7 +75,7 @@ export default function CreateBillingRulePage() {
 
       <div className="card p-6 max-w-2xl">
         <h1 className="text-xl font-bold text-gray-900 mb-1">Create Billing Rule</h1>
-        <p className="text-sm text-gray-400 mb-6">Define a unit-range pricing rule.</p>
+        <p className="text-sm text-gray-400 mb-6">Set the workspace unit price and billing period.</p>
 
         <form onSubmit={handleSubmit} className="space-y-5">
           {errors.general?.map((e, i) => (
@@ -88,20 +83,9 @@ export default function CreateBillingRulePage() {
           ))}
 
           <div className="grid grid-cols-2 gap-4">
-            <Field errors={errors} label="Range Start" name="range_start" hint="Minimum units">
-              <input type="number" min={1} value={form.range_start}
-                onChange={(e) => update('range_start', parseInt(e.target.value, 10) || 1)} className="input" />
-            </Field>
-            <Field errors={errors} label="Range End" name="range_end" hint="Leave blank for unlimited">
-              <input type="number" min={1} value={form.range_end}
-                onChange={(e) => update('range_end', e.target.value)} className="input" placeholder="∞" />
-            </Field>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <Field errors={errors} label="Price (cents)" name="price_cents" hint="e.g. 5000 = TZS 50.00">
-              <input type="number" min={0} value={form.price_cents}
-                onChange={(e) => update('price_cents', e.target.value)} className="input" />
+            <Field errors={errors} label="Unit Price (cents)" name="unit_price_cents" hint="e.g. 1000 = TZS 1,000">
+              <input type="number" min={0} value={form.unit_price_cents}
+                onChange={(e) => update('unit_price_cents', e.target.value)} className="input" />
             </Field>
             <Field errors={errors} label="Currency" name="currency">
               <select value={form.currency} onChange={(e) => update('currency', e.target.value)} className="input">
@@ -121,13 +105,9 @@ export default function CreateBillingRulePage() {
             </Field>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field errors={errors} label="Sort Order" name="sort_order" hint="Display order">
-              <input type="number" min={0} value={form.sort_order}
-                onChange={(e) => update('sort_order', e.target.value)} className="input" />
-            </Field>
+          <div>
             <Field errors={errors} label="Status" name="status">
-              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input">
+              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input w-full">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>

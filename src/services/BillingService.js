@@ -30,7 +30,7 @@ const BillingService = {
   /**
    * Create a new billing rule.
    *
-   * @param {{ range_start, range_end?, price_cents, currency, effective_from, effective_to?, sort_order?, status? }} data
+   * @param {{ unit_price_cents, currency, effective_from, effective_to?, status? }} data
    */
   store(data) {
     return apiFetch(BILLING_PATH, {
@@ -52,6 +52,15 @@ const BillingService = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
     });
+  },
+
+  /**
+   * Delete a billing rule.
+   *
+   * @param {string} uuid
+   */
+  destroy(uuid) {
+    return apiFetch(`${BILLING_PATH}/${uuid}`, { method: 'DELETE' });
   },
 };
 

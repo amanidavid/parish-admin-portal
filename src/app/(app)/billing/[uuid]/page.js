@@ -4,20 +4,32 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import BillingService from '@/services/BillingService';
 import { Skel, Badge, InfoRow } from '@/components/ui';
+import { fmtCents } from '@/lib/formatters';
 import { BILLING_STATUS_MAP, BILLING_CURRENCIES } from '@/constants/status';
+
+function Field({ label, name, children, hint, required, errors }) {
+  return (
+    <div>
+      <label className="label">
+        {label}
+        {required && <span className="text-red-500 ml-0.5">*</span>}
+      </label>
+      {children}
+      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
+      {errors[name]?.map((e, i) => <p key={i} className="text-xs text-red-500 mt-1">{e}</p>)}
+    </div>
+  );
+}
 
 const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState({});
   const [success, setSuccess] = useState(null);
   const [form, setForm] = useState({
-    range_start: rule?.range_start ?? 1,
-    range_end: rule?.range_end ?? '',
-    price_cents: rule?.price_cents ?? 0,
+    unit_price_cents: String(rule?.unit_price_cents ?? ''),
     currency: rule?.currency ?? 'TZS',
     effective_from: rule?.effective_from ?? new Date().toISOString().split('T')[0],
     effective_to: rule?.effective_to ?? '',
-    sort_order: rule?.sort_order ?? 0,
     status: rule?.status ?? 'active',
   });
 
@@ -34,9 +46,7 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
     setSuccess(null);
     const payload = {
       ...form,
-      range_end: form.range_end === '' ? null : parseInt(form.range_end, 10),
-      price_cents: parseInt(form.price_cents, 10) || 0,
-      sort_order: parseInt(form.sort_order, 10) || 0,
+      unit_price_cents: parseInt(form.unit_price_cents, 10) || 0,
       effective_to: form.effective_to === '' ? null : form.effective_to,
     };
     try {
@@ -57,18 +67,6 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
       setSaving(false);
     }
   }, [form, mode, rule, onSaved]);
-
-  const Field = ({ label, name, children, hint, required }) => (
-    <div>
-      <label className="label">
-        {label}
-        {required && <span className="text-red-500 ml-0.5">*</span>}
-      </label>
-      {children}
-      {hint && <p className="text-[11px] text-gray-400 mt-1">{hint}</p>}
-      {errors[name]?.map((e, i) => <p key={i} className="text-xs text-red-500 mt-1">{e}</p>)}
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm"
@@ -91,43 +89,29 @@ const RuleModal = memo(function RuleModal({ mode, rule, onClose, onSaved }) {
         ))}
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Range Start" name="range_start" hint="Minimum units" required>
-              <input type="number" min={1} value={form.range_start}
-                onChange={(e) => update('range_start', parseInt(e.target.value, 10) || 1)} className="input" />
+            <Field errors={errors} label="Unit Price (cents)" name="unit_price_cents" required>
+              <input type="number" min={0} value={form.unit_price_cents}
+                onChange={(e) => update('unit_price_cents', e.target.value)} className="input" />
             </Field>
-            <Field label="Range End" name="range_end" hint="Leave blank for unlimited">
-              <input type="number" min={1} value={form.range_end}
-                onChange={(e) => update('range_end', e.target.value)} className="input" placeholder="∞" />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Price (cents)" name="price_cents" required>
-              <input type="number" min={0} value={form.price_cents}
-                onChange={(e) => update('price_cents', e.target.value)} className="input" />
-            </Field>
-            <Field label="Currency" name="currency">
+            <Field errors={errors} label="Currency" name="currency">
               <select value={form.currency} onChange={(e) => update('currency', e.target.value)} className="input">
                 {BILLING_CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-4">
-            <Field label="Effective From" name="effective_from" required>
+            <Field errors={errors} label="Effective From" name="effective_from" required>
               <input type="date" value={form.effective_from}
                 onChange={(e) => update('effective_from', e.target.value)} className="input" />
             </Field>
-            <Field label="Effective To" name="effective_to">
+            <Field errors={errors} label="Effective To" name="effective_to">
               <input type="date" value={form.effective_to}
                 onChange={(e) => update('effective_to', e.target.value)} className="input" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <Field label="Sort Order" name="sort_order" hint="Display order">
-              <input type="number" min={0} value={form.sort_order}
-                onChange={(e) => update('sort_order', e.target.value)} className="input" />
-            </Field>
-            <Field label="Status" name="status">
-              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input">
+          <div>
+            <Field errors={errors} label="Status" name="status">
+              <select value={form.status} onChange={(e) => update('status', e.target.value)} className="input w-full">
                 <option value="active">Active</option>
                 <option value="inactive">Inactive</option>
               </select>
@@ -213,11 +197,11 @@ export default function BillingRuleDetailPage() {
           <div className="flex items-start gap-4">
             <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 text-white text-lg font-bold"
               style={{ background: 'linear-gradient(135deg,#0891b2,#22d3ee)' }}>
-              {(rule.unit_range_label || 'R').charAt(0).toUpperCase()}
+              {(rule.workspace_name || 'W').charAt(0).toUpperCase()}
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">{rule.unit_range_label || `${rule.range_start}${rule.range_end ? `–${rule.range_end}` : '+'} units`}</h1>
-              <p className="text-sm text-gray-400 mt-0.5">{rule.price_formatted || `${rule.currency} ${rule.price_cents}`}</p>
+              <h1 className="text-xl font-bold text-gray-900">{rule.workspace_name || 'Billing Rule'}</h1>
+              <p className="text-sm text-gray-400 mt-0.5">{fmtCents(rule.unit_price_cents, rule.currency)} per unit</p>
               <div className="flex flex-wrap items-center gap-2 mt-2">
                 <Badge map={BILLING_STATUS_MAP} value={rule.status} />
                 <span className="badge badge-blue">{rule.currency}</span>
@@ -232,8 +216,8 @@ export default function BillingRuleDetailPage() {
           <div className="info-card">
             <div className="info-card-header"><span className="info-card-title">Rule Details</span></div>
             <div className="info-card-body">
-              <InfoRow label="Unit Range" value={rule.unit_range_label || `${rule.range_start}${rule.range_end ? `–${rule.range_end}` : '+'} units`} />
-              <InfoRow label="Price" value={rule.price_formatted || `${rule.currency} ${rule.price_cents}`} />
+              <InfoRow label="Unit Price" value={fmtCents(rule.unit_price_cents, rule.currency)} />
+              <InfoRow label="Workspace" value={rule.workspace_name || '—'} />
               <InfoRow label="Currency" value={rule.currency} mono />
               <InfoRow label="Effective From" value={fmtDate(rule.effective_from)} />
               <InfoRow label="Effective To" value={fmtDate(rule.effective_to) || 'No end date'} />
