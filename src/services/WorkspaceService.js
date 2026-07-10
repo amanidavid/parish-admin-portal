@@ -216,6 +216,21 @@ const WorkspaceService = {
       ...options,
     });
   },
+
+  /**
+   * Extend a workspace's free trial period.
+   *
+   * @param {string} uuid
+   * @param {{ days: number, reason?: string }} data
+   */
+  extendTrial(uuid, data, options = {}) {
+    return apiFetch(`${TENANTS_PATH}/${uuid}/trial-extension`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+      ...options,
+    });
+  },
 };
 
 export default WorkspaceService;

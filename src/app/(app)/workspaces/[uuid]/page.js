@@ -6,6 +6,7 @@ import Link from 'next/link';
 import WorkspaceService from '@/services/WorkspaceService';
 import PropertySubscriptionService from '@/services/PropertySubscriptionService';
 import PaymentModal from '@/components/property-subscriptions/PaymentModal';
+import TrialExtensionModal from '@/components/workspaces/TrialExtensionModal';
 import { Skel, Badge, OccBar, ConfirmModal } from '@/components/ui';
 import { fmt, fmtAmt, pct, fmtDate, fmtCents } from '@/lib/formatters';
 import { WORKSPACE_STATUS_MAP, PROV_MAP, ACCESS_CFG, CT_COLORS, SUB_STATUS_MAP } from '@/constants/status';
@@ -402,12 +403,13 @@ function SubscriptionTab({ uuid }) {
 }
 
 // ─── Workspace Actions ───────────────────────────────────────────────────────
-function WorkspaceActions({ uuid, workspace, onRefresh }) {
+function WorkspaceActions({ uuid, workspace, subscription, onRefresh }) {
   const [acting, setActing] = useState(false);
   const [open, setOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [confirmConfig, setConfirmConfig] = useState({ title: '', message: '', action: null, danger: false });
   const [confirmResult, setConfirmResult] = useState(null);
+  const [trialOpen, setTrialOpen] = useState(false);
   const ref = useRef(null);
 
   useEffect(() => {
@@ -452,6 +454,7 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
 
   const canRetryProvisioning = workspace?.can_retry_provisioning === true;
   const isActive = workspace?.status === 'active';
+  const isTrialing = workspace?.access_state === 'trial' || subscription?.subscription?.effective_status === 'trialing';
 
   return (
     <>
@@ -482,14 +485,12 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
               className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
               {isActive ? 'Suspend Workspace' : 'Reactivate Workspace'}
             </button>
-            <button onClick={() => promptAction('Set Subscription Active', 'Activate subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'active' }, { showLoader: false }))}
-              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-              Set Subscription Active
-            </button>
-            <button onClick={() => promptAction('Cancel Subscription', 'Cancel subscription for this workspace?', () => WorkspaceService.updateSubscriptionStatus(uuid, { status: 'canceled' }, { showLoader: false }), true)}
-              className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50 transition-colors">
-              Cancel Subscription
-            </button>
+            {isTrialing && (
+              <button onClick={() => { setTrialOpen(true); setOpen(false); }}
+                className="w-full text-left px-4 py-2 text-sm text-blue-600 hover:bg-blue-50 transition-colors">
+                Extend Free Trial
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -504,6 +505,12 @@ function WorkspaceActions({ uuid, workspace, onRefresh }) {
         danger={confirmConfig.danger}
         loading={acting}
         result={confirmResult}
+      />
+      <TrialExtensionModal
+        uuid={uuid}
+        open={trialOpen}
+        onClose={() => setTrialOpen(false)}
+        onSuccess={onRefresh}
       />
     </>
   );
@@ -684,7 +691,7 @@ export default function WorkspaceDetailPage() {
                 </span>
               </div>
             )}
-            <WorkspaceActions uuid={uuid} workspace={workspace} onRefresh={loadOperational} />
+            <WorkspaceActions uuid={uuid} workspace={workspace} subscription={subscription} onRefresh={loadOperational} />
           </div>
         </div>
       </div>
