@@ -43,18 +43,24 @@ export default function ResendModal({ open, onClose, onSuccess, mode, target, se
 
   const handleSubmit = useCallback(async (e) => {
     e.preventDefault();
+    console.log('ResendModal handleSubmit', { mode, target, selectedUuids, channel, force });
     setLoading(true);
     setResult(null);
     try {
       let res;
       if (mode === 'single' && target) {
+        console.log('Calling resendReminder for single', target.uuid);
         res = await PropertyInvoiceService.resendReminder(target.uuid, { channel, force }, { showLoader: false });
       } else if (mode === 'bulk' && selectedUuids.length > 0) {
+        console.log('Calling resendReminders for bulk', { selectedUuids, channel, force });
         res = await PropertyInvoiceService.resendReminders(
           { channel, force, invoice_uuids: selectedUuids, limit: selectedUuids.length },
           { showLoader: false }
         );
+      } else {
+        console.error('Invalid state for resend', { mode, target, selectedUuids });
       }
+      console.log('Resend response', res);
       if (res?.success) {
         setResult({ type: 'success', data: res.data, message: res.message });
       } else if (res?.errors) {
@@ -190,15 +196,6 @@ export default function ResendModal({ open, onClose, onSuccess, mode, target, se
                   )}
                 </div>
               ))}
-            </div>
-          )}
-
-          {result.type === 'success' && summary && (
-            <div className="rounded-lg bg-green-50 border border-green-100 p-3 text-center">
-              <p className="text-xs text-gray-500">Total</p>
-              <p className="text-sm font-semibold text-gray-900">
-                {summary.sent_count} sent, {summary.failed_count} failed, {summary.skipped_count} skipped
-              </p>
             </div>
           )}
 

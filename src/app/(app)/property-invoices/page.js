@@ -12,12 +12,17 @@ const INVOICE_STATUS_MAP = {
   paid: { label: 'Paid', cls: 'badge-blue' },
 };
 
+const getInvoiceUuid = (invoice) => invoice?.uuid
+  || invoice?.property_invoice_uuid
+  || invoice?.invoice_uuid
+  || invoice?.property_invoice?.uuid
+  || null;
+
 function PropertyInvoicesPage() {
   const [invoices, setInvoices] = useState([]);
   const [meta, setMeta] = useState(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState(new Set());
-  const [selectAll, setSelectAll] = useState(false);
   const [resendOpen, setResendOpen] = useState(false);
   const [resendMode, setResendMode] = useState('single'); // 'single' | 'bulk'
   const [resendTarget, setResendTarget] = useState(null);
@@ -38,7 +43,25 @@ function PropertyInvoicesPage() {
       ...(f.date_to ? { date_to: f.date_to } : {}),
     });
     if (data?.data) {
-      setInvoices(data.data);
+      setInvoices(data.data.map((invoice) => {
+        const invoiceUuid = getInvoiceUuid(invoice);
+        const deliveryUuid = invoice.delivery_log_uuid
+          || invoice.log_uuid
+          || invoice.delivery_log?.uuid;
+
+        // Use delivery UUID as primary row key for stability
+        // Fallback to invoice UUID if no delivery UUID
+        // Last resort: invoice_number + random (rare case)
+        const rowKey = deliveryUuid
+          || invoiceUuid
+          || `${invoice.invoice_number || 'invoice'}`;
+
+        return {
+          ...invoice,
+          uuid: invoiceUuid,
+          rowKey,
+        };
+      }));
       setMeta(data.meta);
     }
     setLoading(false);
@@ -69,7 +92,6 @@ function PropertyInvoicesPage() {
 
   const handleDeselectAll = useCallback(() => {
     setSelected(new Set());
-    setSelectAll(false);
   }, []);
 
   const pageNums = useMemo(() => {
@@ -78,24 +100,37 @@ function PropertyInvoicesPage() {
     return Array.from({ length: Math.min(5, meta.last_page) }, (_, i) => start + i);
   }, [meta, filters.page]);
 
-  const handleSelectAll = useCallback((e) => {
-    const checked = e.target.checked;
-    setSelectAll(checked);
-    if (checked) {
-      setSelected(new Set(invoices.map((inv) => inv.uuid)));
-    } else {
-      setSelected(new Set());
-    }
-  }, [invoices]);
+  const selectableRowKeys = useMemo(
+    () => invoices.filter((invoice) => invoice.uuid).map((invoice) => invoice.rowKey),
+    [invoices]
+  );
 
-  const handleSelectOne = useCallback((uuid) => {
+  const allCurrentSelected = useMemo(
+    () => selectableRowKeys.length > 0 && selectableRowKeys.every((rowKey) => selected.has(rowKey)),
+    [selectableRowKeys, selected]
+  );
+
+  const handleSelectAll = useCallback((e) => {
+    if (e.target.checked) {
+      setSelected(new Set(selectableRowKeys));
+      return;
+    }
+    setSelected(new Set());
+  }, [selectableRowKeys]);
+
+  const handleSelectOne = useCallback((rowKey) => {
+    console.log('handleSelectOne called', { rowKey });
+    if (!rowKey) return;
     setSelected((prev) => {
       const next = new Set(prev);
-      if (next.has(uuid)) {
-        next.delete(uuid);
+      if (next.has(rowKey)) {
+        next.delete(rowKey);
+        console.log('Deselected row', rowKey);
       } else {
-        next.add(uuid);
+        next.add(rowKey);
+        console.log('Selected row', rowKey);
       }
+      console.log('New selected set', Array.from(next));
       return next;
     });
   }, []);
@@ -107,9 +142,11 @@ function PropertyInvoicesPage() {
   }, []);
 
   const handleResendBulk = useCallback(() => {
+    console.log('handleResendBulk called', { selectedSize: selected.size, selected: Array.from(selected) });
     if (selected.size === 0) return;
     // Validate selected invoices
-    const selectedInvoices = invoices.filter((inv) => selected.has(inv.uuid));
+    const selectedInvoices = invoices.filter((inv) => selected.has(inv.rowKey));
+    console.log('selectedInvoices', selectedInvoices);
     const invalidInvoices = selectedInvoices.filter((inv) => inv.status === 'paid');
     if (invalidInvoices.length > 0) {
       setConfirmResult({ type: 'error', message: `Cannot resend ${invalidInvoices.length} paid invoice${invalidInvoices.length > 1 ? 's' : ''}. Please deselect paid invoices.` });
@@ -135,13 +172,20 @@ function PropertyInvoicesPage() {
   const handleResendSuccess = useCallback(() => {
     setResendOpen(false);
     setSelected(new Set());
-    setSelectAll(false);
     fetchInvoices(filters);
   }, [filters, fetchInvoices]);
 
   const selectedCount = useMemo(() => selected.size, [selected.size]);
   const hasSelection = useMemo(() => selectedCount > 0, [selectedCount]);
-  const selectedInvoices = useMemo(() => invoices.filter((inv) => selected.has(inv.uuid)), [invoices, selected]);
+  const selectedUuids = useMemo(
+    () => Array.from(new Set(
+      invoices
+        .filter((invoice) => selected.has(invoice.rowKey))
+        .map((invoice) => invoice.uuid)
+        .filter(Boolean)
+    )),
+    [invoices, selected]
+  );
 
   return (
     <div className="space-y-6">
@@ -228,7 +272,7 @@ function PropertyInvoicesPage() {
                 <th className="w-10">
                   <input
                     type="checkbox"
-                    checked={selectAll && invoices.length > 0}
+                    checked={allCurrentSelected}
                     onChange={handleSelectAll}
                     className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   />
@@ -254,15 +298,16 @@ function PropertyInvoicesPage() {
                 </tr>
               ))}
               {!loading && invoices.length === 0 && (
-                <tr><td colSpan={7} className="text-center py-14 text-gray-400 text-sm">No invoices found</td></tr>
+                <tr key="empty"><td colSpan={7} className="text-center py-14 text-gray-400 text-sm">No invoices found</td></tr>
               )}
               {!loading && invoices.map((inv) => (
-                <tr key={inv.uuid}>
+                <tr key={inv.rowKey}>
                   <td>
                     <input
                       type="checkbox"
-                      checked={selected.has(inv.uuid)}
-                      onChange={() => handleSelectOne(inv.uuid)}
+                      checked={selected.has(inv.rowKey)}
+                      disabled={!inv.uuid}
+                      onChange={() => handleSelectOne(inv.rowKey)}
                       className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                     />
                   </td>
@@ -301,15 +346,16 @@ function PropertyInvoicesPage() {
             </div>
           ))}
           {!loading && invoices.length === 0 && (
-            <div className="text-center py-14 text-gray-400 text-sm">No invoices found</div>
+            <div key="empty-mobile" className="text-center py-14 text-gray-400 text-sm">No invoices found</div>
           )}
           {!loading && invoices.map((inv) => (
-            <div key={inv.uuid} className="card p-4 space-y-3">
+            <div key={inv.rowKey} className="card p-4 space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-2">
                   <input
                     type="checkbox"
-                    checked={selected.has(inv.uuid)}
+                    checked={Boolean(inv.uuid && selected.has(inv.uuid))}
+                    disabled={!inv.uuid}
                     onChange={() => handleSelectOne(inv.uuid)}
                     className="w-4 h-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
                   />
@@ -358,7 +404,7 @@ function PropertyInvoicesPage() {
         onSuccess={handleResendSuccess}
         mode={resendMode}
         target={resendTarget}
-        selectedUuids={Array.from(selected)}
+        selectedUuids={selectedUuids}
       />
       <ConfirmModal
         open={confirmOpen}
