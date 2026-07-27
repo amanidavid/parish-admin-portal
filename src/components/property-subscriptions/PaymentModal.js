@@ -35,7 +35,7 @@ export default function PaymentModal({ workspaceUuid, property, onClose, onSucce
         setPreview(res.data);
         setStep('preview');
       } else {
-        throw new Error(res?.message || 'Preview failed');
+        throw new Error(res?.errors?.payment?.[0] || res?.message || 'Preview failed');
       }
     } catch (e) {
       setError(e?.message || 'Failed to preview payment');
@@ -58,7 +58,7 @@ export default function PaymentModal({ workspaceUuid, property, onClose, onSucce
         showNotification('Payment recorded successfully.', 'success');
         onSuccess?.();
       } else {
-        throw new Error(res?.message || 'Failed to record payment');
+        throw new Error(res?.errors?.payment?.[0] || res?.message || 'Failed to record payment');
       }
     } catch (e) {
       setError(e?.message || 'Failed to record payment');

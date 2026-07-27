@@ -11,6 +11,7 @@ export const BILLING_PATH = `${ADMIN_API_BASE}/billing-rules`;
 export const PLATFORM_OVERVIEW_PATH = `${ADMIN_API_BASE}/platform/overview`;
 export const PROPERTY_SUBSCRIPTION_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for property subscriptions
 export const PROPERTY_SUBSCRIPTION_PAYMENT_PATH = `${ADMIN_API_BASE}/tenants`; // tenant prefix for payments
+export const PROPERTY_INVOICES_PATH = `${ADMIN_API_BASE}/property-invoices`;
 export const REPORTS_PATH = `${ADMIN_API_BASE}/reports`;
 export const AUTOMATION_TASKS_PATH = `${ADMIN_API_BASE}/automation/tasks`;
 export const ANALYTICS_PATH = `${ADMIN_API_BASE}/analytics`;
