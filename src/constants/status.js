@@ -80,3 +80,17 @@ export const CT_COLORS = Object.freeze({
   terminated: '#b91c1c',
   renewed: '#0891b2',
 });
+
+// ─── Historical Contract Entry Grants ───────────────────────────────────────
+// status enum: active | expired | revoked (per historical_contract_entry_grants schema)
+// scope + effective_status are derived by the API, not stored columns.
+export const GRANT_STATUS_MAP = Object.freeze({
+  active: { label: 'Active', cls: 'badge-green' },
+  expired: { label: 'Expired', cls: 'badge-gray' },
+  revoked: { label: 'Revoked', cls: 'badge-red' },
+});
+
+export const GRANT_SCOPE_MAP = Object.freeze({
+  workspace: { label: 'Workspace', cls: 'badge-amber' },
+  property: { label: 'Property', cls: 'badge-purple' },
+});

@@ -471,6 +471,15 @@ function WorkspaceActions({ uuid, workspace, subscription, onRefresh }) {
         </button>
         {open && (
           <div className="absolute right-0 mt-2 w-56 rounded-xl border border-gray-200 bg-white shadow-lg z-20 py-1">
+            <Link href={`/workspaces/${uuid}/historical-contract-entry-grants`}
+              onClick={() => setOpen(false)}
+              className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors flex items-center justify-between">
+              Historical Contract Grants
+              <svg className="w-3.5 h-3.5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
+            </Link>
+            <div className="border-t border-gray-100 my-1" />
             {canRetryProvisioning && (
               <button onClick={() => promptAction('Retry Provisioning', 'Retry provisioning for this workspace?', () => WorkspaceService.retryProvisioning(uuid, { showLoader: false }))}
                 className="w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 transition-colors">

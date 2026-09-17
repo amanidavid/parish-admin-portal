@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useCallback } from 'react';
 
-export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg' }) {
+export default function Modal({ open, onClose, title, children, maxWidth = 'max-w-lg', panelClassName = 'rounded-lg' }) {
   const handleKey = useCallback(
     (e) => { if (e.key === 'Escape') onClose(); },
     [onClose]
@@ -26,7 +26,7 @@ export default function Modal({ open, onClose, title, children, maxWidth = 'max-
         onClick={onClose}
       />
       <div
-        className={`relative bg-white rounded-lg shadow-2xl w-full ${maxWidth} max-h-[90vh] flex flex-col`}
+        className={`relative bg-white ${panelClassName} shadow-2xl w-full ${maxWidth} max-h-[90vh] flex flex-col`}
         role="dialog"
         aria-modal="true"
       >
